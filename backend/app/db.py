@@ -1,0 +1,100 @@
+import sqlite3
+from contextlib import contextmanager
+from typing import Iterator
+
+from . import config
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS whoop_token (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    expires_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS oauth_state (
+    state TEXT PRIMARY KEY,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS whoop_cycle (
+    id INTEGER PRIMARY KEY,
+    start TEXT NOT NULL,
+    end TEXT,
+    strain REAL,
+    avg_hr INTEGER,
+    max_hr INTEGER,
+    kilojoule REAL,
+    raw TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS whoop_recovery (
+    cycle_id INTEGER PRIMARY KEY,
+    sleep_id TEXT,
+    created_at TEXT NOT NULL,
+    recovery_score REAL,
+    resting_hr REAL,
+    hrv_rmssd_ms REAL,
+    spo2 REAL,
+    skin_temp_c REAL,
+    raw TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS whoop_sleep (
+    id TEXT PRIMARY KEY,
+    start TEXT NOT NULL,
+    end TEXT NOT NULL,
+    nap INTEGER NOT NULL,
+    performance_pct REAL,
+    efficiency_pct REAL,
+    respiratory_rate REAL,
+    light_ms INTEGER,
+    sws_ms INTEGER,
+    rem_ms INTEGER,
+    awake_ms INTEGER,
+    in_bed_ms INTEGER,
+    disturbances INTEGER,
+    raw TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS whoop_workout (
+    id TEXT PRIMARY KEY,
+    start TEXT NOT NULL,
+    end TEXT NOT NULL,
+    sport_name TEXT,
+    strain REAL,
+    avg_hr INTEGER,
+    max_hr INTEGER,
+    kilojoule REAL,
+    distance_m REAL,
+    raw TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL,
+    detail TEXT
+);
+"""
+
+
+def connect() -> sqlite3.Connection:
+    config.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    with get_db() as conn:
+        conn.executescript(SCHEMA)
+
+
+@contextmanager
+def get_db() -> Iterator[sqlite3.Connection]:
+    conn = connect()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
