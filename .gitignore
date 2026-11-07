@@ -1,0 +1,29 @@
+# Secrets and tokens
+.env
+.env.*
+!.env.example
+*.token
+.garmin_tokens/
+.garminconnect/
+
+# Data
+*.db
+*.sqlite
+*.sqlite3
+data/
+*.fit
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
