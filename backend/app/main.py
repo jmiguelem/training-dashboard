@@ -7,6 +7,8 @@ from fastapi.responses import RedirectResponse
 
 from . import config
 from .db import get_db, init_db
+from .garmin.client import GarminNotLoggedIn
+from .garmin.sync import sync_garmin
 from .whoop import auth as whoop_auth
 from .whoop.sync import NotConnected, sync_whoop
 
@@ -51,13 +53,30 @@ def whoop_callback(code: str | None = None, state: str | None = None, error: str
     return RedirectResponse(config.FRONTEND_URL)
 
 
+def _last_sync(source: str):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM sync_log WHERE source=? ORDER BY id DESC LIMIT 1", (source,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 @app.get("/api/status")
 def status():
-    with get_db() as conn:
-        last = conn.execute(
-            "SELECT * FROM sync_log WHERE source='whoop' ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-    return {"whoop_connected": whoop_auth.is_connected(), "last_whoop_sync": dict(last) if last else None}
+    return {
+        "whoop_connected": whoop_auth.is_connected(),
+        "last_whoop_sync": _last_sync("whoop"),
+        "garmin_connected": config.GARMIN_TOKENS.exists(),
+        "last_garmin_sync": _last_sync("garmin"),
+    }
+
+
+@app.post("/api/sync/garmin")
+def sync_garmin_route():
+    try:
+        return {"synced": sync_garmin()}
+    except GarminNotLoggedIn as exc:
+        raise HTTPException(409, str(exc))
 
 
 @app.post("/api/sync/whoop")
@@ -108,5 +127,28 @@ def whoop_workouts(days: int = Query(30, ge=1, le=730)):
     return _rows(
         "SELECT id, start, end, sport_name, strain, avg_hr, max_hr, kilojoule, distance_m "
         "FROM whoop_workout WHERE start >= datetime('now', ?) ORDER BY start",
+        (f"-{days} days",),
+    )
+
+
+@app.get("/api/activities")
+def activities(days: int = Query(90, ge=1, le=730), sport: str | None = None):
+    sql = (
+        "SELECT id, name, sport, start, distance_m, duration_s, avg_hr, max_hr, avg_speed_ms, "
+        "calories, cadence, avg_power, elevation_gain_m, vo2max, aerobic_te, training_load "
+        "FROM garmin_activity WHERE start >= datetime('now', ?)"
+    )
+    params: tuple = (f"-{days} days",)
+    if sport:
+        sql += " AND sport = ?"
+        params += (sport,)
+    return _rows(sql + " ORDER BY start", params)
+
+
+@app.get("/api/garmin/daily")
+def garmin_daily(days: int = Query(90, ge=1, le=730)):
+    return _rows(
+        "SELECT date, steps, resting_hr, body_battery_high, body_battery_low, avg_stress, vo2max "
+        "FROM garmin_daily WHERE date >= date('now', ?) ORDER BY date",
         (f"-{days} days",),
     )

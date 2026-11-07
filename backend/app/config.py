@@ -18,3 +18,5 @@ WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 WHOOP_TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
 WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v2"
 WHOOP_SCOPES = "offline read:recovery read:cycles read:sleep read:workout read:profile"
+
+GARMIN_TOKENS = Path(os.getenv("GARMIN_TOKENS", ROOT / "data" / "garmin_tokens"))

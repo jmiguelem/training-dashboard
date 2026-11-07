@@ -64,6 +64,35 @@ CREATE TABLE IF NOT EXISTS whoop_workout (
     distance_m REAL,
     raw TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS garmin_activity (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    sport TEXT,
+    start TEXT NOT NULL,
+    distance_m REAL,
+    duration_s REAL,
+    avg_hr REAL,
+    max_hr REAL,
+    avg_speed_ms REAL,
+    calories REAL,
+    cadence REAL,
+    avg_power REAL,
+    elevation_gain_m REAL,
+    vo2max REAL,
+    aerobic_te REAL,
+    training_load REAL,
+    raw TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS garmin_daily (
+    date TEXT PRIMARY KEY,
+    steps INTEGER,
+    resting_hr INTEGER,
+    body_battery_high INTEGER,
+    body_battery_low INTEGER,
+    avg_stress INTEGER,
+    vo2max REAL,
+    raw TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
