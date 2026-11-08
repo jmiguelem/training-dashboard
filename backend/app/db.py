@@ -119,6 +119,22 @@ CREATE TABLE IF NOT EXISTS garmin_laps (
     activity_id INTEGER PRIMARY KEY,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lift_set (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_id INTEGER NOT NULL,
+    set_index INTEGER,
+    exercise TEXT NOT NULL,
+    reps INTEGER,
+    weight_kg REAL,
+    duration_s REAL,
+    rest_s REAL,
+    started_at TEXT,
+    source TEXT NOT NULL DEFAULT 'garmin',
+    edited INTEGER NOT NULL DEFAULT 0,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (activity_id, set_index)
+);
+CREATE INDEX IF NOT EXISTS idx_lift_set_activity ON lift_set(activity_id);
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,

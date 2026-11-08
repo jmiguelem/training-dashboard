@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from . import config, profile
+from . import config, lifts, profile
 from .db import get_db, init_db
 from .analysis import coach
 from .garmin.client import GarminNotLoggedIn
@@ -257,3 +257,47 @@ def sport_metrics(days: int = Query(365, ge=7, le=730)):
     from .analysis import sport_metrics as sm
 
     return sm.load(days)
+
+
+class SetUpdate(BaseModel):
+    exercise: str | None = None
+    reps: int | None = None
+    weight_kg: float | None = None
+    duration_s: float | None = None
+    deleted: bool | None = None
+
+
+class SetCreate(BaseModel):
+    activity_id: int
+    exercise: str
+    reps: int
+    weight_kg: float
+
+
+@app.get("/api/lifts")
+def lifts_get(days: int = Query(180, ge=7, le=730)):
+    return {
+        "sessions": lifts.sessions(days),
+        "exercises": lifts.exercise_history(365),
+        "weekly": lifts.weekly_volume(days),
+    }
+
+
+@app.patch("/api/lifts/sets/{set_id}")
+def lifts_update(set_id: int, body: SetUpdate):
+    try:
+        return lifts.update_set(set_id, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(404, "Set not found")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/lifts/sets")
+def lifts_add(body: SetCreate):
+    try:
+        return lifts.add_set(body.activity_id, body.exercise, body.reps, body.weight_kg)
+    except KeyError:
+        raise HTTPException(404, "Activity not found")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))

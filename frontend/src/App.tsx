@@ -4,6 +4,7 @@ import { get, post, type Status } from './api'
 import Activities from './pages/Activities'
 import Coach from './pages/Coach'
 import Insights from './pages/Insights'
+import Lifts from './pages/Lifts'
 import Progress from './pages/Progress'
 import Recovery from './pages/Recovery'
 import Sports from './pages/Sports'
@@ -15,6 +16,7 @@ const NAV = [
   { to: '/recovery', label: 'Recovery' },
   { to: '/progress', label: 'Progress' },
   { to: '/sports', label: 'Sports' },
+  { to: '/lifts', label: 'Lifts' },
   { to: '/insights', label: 'Insights' },
   { to: '/coach', label: 'Coach' },
 ]
@@ -107,6 +109,7 @@ export default function App() {
           <Route path="/recovery" element={<Recovery reloadKey={reloadKey} />} />
           <Route path="/progress" element={<Progress reloadKey={reloadKey} />} />
           <Route path="/sports" element={<Sports reloadKey={reloadKey} />} />
+          <Route path="/lifts" element={<Lifts reloadKey={reloadKey} />} />
           <Route path="/insights" element={<Insights reloadKey={reloadKey} />} />
           <Route path="/coach" element={<Coach reloadKey={reloadKey} />} />
         </Routes>

@@ -122,6 +122,9 @@ def sync_garmin() -> dict:
                 upsert_activity(conn, a)
         counts["activities"] = len(activities)
         counts["laps"] = sync_laps(api)
+        from .. import lifts
+
+        counts["sets"] = lifts.sync_lifts(api)
         day = daily_start
         while day <= today:
             iso = day.isoformat()
