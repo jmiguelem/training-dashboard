@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { get, post, type Status } from './api'
 import Activities from './pages/Activities'
+import Coach from './pages/Coach'
 import Insights from './pages/Insights'
 import Progress from './pages/Progress'
 import Recovery from './pages/Recovery'
@@ -13,6 +14,7 @@ const NAV = [
   { to: '/recovery', label: 'Recovery' },
   { to: '/progress', label: 'Progress' },
   { to: '/insights', label: 'Insights' },
+  { to: '/coach', label: 'Coach' },
 ]
 
 export default function App() {
@@ -103,6 +105,7 @@ export default function App() {
           <Route path="/recovery" element={<Recovery reloadKey={reloadKey} />} />
           <Route path="/progress" element={<Progress reloadKey={reloadKey} />} />
           <Route path="/insights" element={<Insights reloadKey={reloadKey} />} />
+          <Route path="/coach" element={<Coach reloadKey={reloadKey} />} />
         </Routes>
       </main>
     </div>

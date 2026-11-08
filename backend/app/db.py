@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS garmin_daily (
     vo2max REAL,
     raw TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS coach_summary (
+    week_key TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    model TEXT NOT NULL,
+    text TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,

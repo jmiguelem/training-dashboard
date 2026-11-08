@@ -20,3 +20,5 @@ WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v2"
 WHOOP_SCOPES = "offline read:recovery read:cycles read:sleep read:workout read:profile"
 
 GARMIN_TOKENS = Path(os.getenv("GARMIN_TOKENS", ROOT / "data" / "garmin_tokens"))
+
+COACH_MODEL = os.getenv("COACH_MODEL", "claude-sonnet-5-5")

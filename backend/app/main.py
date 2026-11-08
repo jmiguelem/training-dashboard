@@ -2,11 +2,13 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from . import config
 from .db import get_db, init_db
+from .analysis import coach
 from .garmin.client import GarminNotLoggedIn
 from .garmin.sync import sync_garmin
 from .whoop import auth as whoop_auth
@@ -171,3 +173,35 @@ def insights():
         "WHERE end >= datetime('now', '-60 days')"
     )
     return compute(acts, rec, sl)
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
+
+@app.get("/api/coach/summary")
+def coach_summary_get():
+    return coach.latest_summary() or {"text": None}
+
+
+@app.post("/api/coach/summary")
+def coach_summary_post(force: bool = False):
+    try:
+        return coach.weekly_summary(force=force)
+    except coach.CoachUnavailable as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.post("/api/coach/chat")
+def coach_chat(req: ChatRequest):
+    try:
+        return {"reply": coach.chat([m.model_dump() for m in req.messages])}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except coach.CoachUnavailable as exc:
+        raise HTTPException(503, str(exc))
