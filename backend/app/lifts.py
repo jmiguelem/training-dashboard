@@ -228,3 +228,16 @@ def coach_summary(days: int = 120, max_exercises: int = 12) -> dict:
         ],
         "note": "Sets under 5 s or with 0 reps are excluded as probable missed set starts unless the athlete edited them.",
     }
+
+
+def recent_session_summaries(n: int = 6) -> list[dict]:
+    """Latest gym sessions with the exercises done, so the coach can continue the athlete's split rotation."""
+    out = []
+    for s in sessions(60)[:n]:
+        counts: dict[str, int] = defaultdict(int)
+        for st in s["sets"]:
+            if not st["suspect"]:
+                counts[st["name"]] += 1
+        top = sorted(counts, key=lambda k: -counts[k])[:6]
+        out.append({"date": s["date"], "garmin_title": s["name"], "exercises": top})
+    return out

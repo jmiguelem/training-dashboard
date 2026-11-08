@@ -195,6 +195,7 @@ class ProfileUpdate(BaseModel):
     race_date: str | None = None
     max_hr: int | None = None
     gym_days_per_week: int | None = None
+    gym_split: str | None = None
     background: str | None = None
     injuries: str | None = None
     notes: str | None = None

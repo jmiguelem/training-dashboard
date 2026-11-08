@@ -18,6 +18,7 @@ type Profile = {
   race_date: string
   max_hr: number
   gym_days_per_week: number
+  gym_split: string
   background: string
   injuries: string
   notes: string
@@ -35,6 +36,7 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 const getJson = <T,>(path: string) => send<T>('GET', path)
 
+const SPLIT_PRESETS = ['Upper/Lower', 'Push/Pull/Legs', 'Full body', 'Bro split']
 const SUGGESTIONS = [
   'Should I run today?',
   'Am I on track for my goal?',
@@ -175,6 +177,37 @@ function ProfileForm({ onSaved }: { onSaved: () => void }) {
               />
             </label>
           </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="secondary">Gym split</span>
+            <select
+              value={SPLIT_PRESETS.includes(p.gym_split) ? p.gym_split : p.gym_split === '' ? '' : 'custom'}
+              onChange={(e) => set('gym_split', e.target.value === 'custom' ? ' ' : e.target.value)}
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              style={field}
+            >
+              <option value="">Not set</option>
+              {SPLIT_PRESETS.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+              <option value="custom">Custom…</option>
+            </select>
+          </label>
+          {p.gym_split !== '' && !SPLIT_PRESETS.includes(p.gym_split) && (
+            <label className="block text-sm">
+              <span className="secondary">Describe your split</span>
+              <input
+                value={p.gym_split.trim() === '' ? '' : p.gym_split}
+                onChange={(e) => set('gym_split', e.target.value || ' ')}
+                placeholder="e.g. Upper/Lower plus a weekly arms day"
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                style={field}
+              />
+            </label>
+          )}
         </div>
         {text('background', 'Background')}
         {text('injuries', 'Injuries or limits')}

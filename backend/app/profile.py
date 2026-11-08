@@ -10,12 +10,25 @@ DEFAULTS: dict = {
     "race_date": "2027-11-07",  # approximate: 'in about a year'; edit in the app
     "max_hr": 190,
     "gym_days_per_week": 4,
+    "gym_split": "",
     "background": "Zero running experience before this. Building a running base first while keeping gym training.",
     "injuries": "",
     "notes": "",
 }
 
 FIELDS = tuple(DEFAULTS)
+
+# What each preset means for planning. A custom split is passed to the coach as typed.
+SPLITS = {
+    "Upper/Lower": "sessions alternate Upper and Lower body (for example Upper A, Lower A, Upper B, Lower B). "
+    "Every gym session is either an upper-body or a lower-body day. Do not plan full-body, push/pull/legs or "
+    "single-muscle-group sessions.",
+    "Push/Pull/Legs": "sessions rotate Push (chest, shoulders, triceps), Pull (back, biceps) and Legs. "
+    "Do not plan upper/lower or full-body sessions.",
+    "Full body": "every gym session trains the whole body. Do not split sessions by body part.",
+    "Bro split": "each session focuses on one or two muscle groups (for example chest, back, legs, shoulders, arms). "
+    "Do not plan full-body or upper/lower sessions.",
+}
 
 
 def get_profile() -> dict:
@@ -40,7 +53,7 @@ def save_profile(update: dict) -> dict:
             date.fromisoformat(clean["race_date"])
         except ValueError as exc:
             raise ValueError("race_date must be YYYY-MM-DD") from exc
-    for k in ("goal", "race_name", "background", "injuries", "notes"):
+    for k in ("goal", "race_name", "gym_split", "background", "injuries", "notes"):
         if k in clean:
             clean[k] = str(clean[k]).strip()[:2000]
     merged = {**get_profile(), **clean}
@@ -69,6 +82,18 @@ def weeks_to_race(p: dict, today: date | None = None) -> int | None:
     return max(0, days // 7)
 
 
+def split_text(split: str) -> str:
+    split = (split or "").strip()
+    if not split:
+        return "No gym split stated; do not assume one."
+    desc = SPLITS.get(split)
+    return (
+        f"The athlete follows a {split} split: {desc} Every planned gym session must follow this split."
+        if desc
+        else f"The athlete follows this gym split: {split}. Every planned gym session must follow it."
+    )
+
+
 def profile_text(p: dict | None = None, today: date | None = None) -> str:
     p = p or get_profile()
     z = ", ".join(f"{n} {lo}-{hi}" for n, lo, hi in zones(p["max_hr"]))
@@ -79,7 +104,7 @@ def profile_text(p: dict | None = None, today: date | None = None) -> str:
         + (f" ({wk} weeks away)" if wk is not None else "")
         + ". The date is the athlete's estimate.",
         f"- Background: {p['background']}",
-        f"- Gym: about {p['gym_days_per_week']} sessions a week.",
+        f"- Gym: about {p['gym_days_per_week']} sessions a week. " + split_text(p["gym_split"]),
         f"- Max heart rate: {p['max_hr']} bpm (stated by the athlete). Zones in bpm: {z}. "
         "Easy running should sit in Z2, at most the low end of Z3.",
         f"- Injuries or limits: {p['injuries'] or 'none reported'}",

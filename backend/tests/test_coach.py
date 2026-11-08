@@ -226,3 +226,33 @@ def test_coach_sees_individual_swims(fake):
             "VALUES (1, 'lap_swimming', datetime('now', '-20 days'), 3200, 4000, ?)", (raw,))
     ctx = coach.build_context()
     assert ctx["all_swims_last_120_days"][0]["km"] == 3.2
+
+
+def test_gym_split_reaches_prompt_and_rotation_context(fake):
+    from app import lifts, profile
+
+    profile.save_profile({"gym_split": "Upper/Lower"})
+    with get_db() as conn:
+        conn.execute("INSERT INTO garmin_activity (id, sport, start, name, duration_s, raw) "
+                     "VALUES (1, 'strength_training', datetime('now', '-2 days'), 'LOWER 2', 3000, '{}')")
+    lifts.import_sets(1, [{"setType": "ACTIVE", "exercises": [{"name": "BARBELL_BACK_SQUAT"}],
+                           "repetitionCount": 8, "weight": 70000, "duration": 40}])
+    coach.chat("plan?")
+    sys_prompt = fake.calls[0]["system"]
+    assert "follows a Upper/Lower split" in sys_prompt and "Do not plan full-body" in sys_prompt
+    assert "LOWER 2" in sys_prompt and "Barbell back squat" in sys_prompt
+
+
+def test_custom_split_is_passed_as_typed_and_unset_is_not_assumed():
+    from app import profile
+
+    assert "No gym split stated" in profile.split_text("")
+    assert "Arnold split" in profile.split_text("Arnold split")
+    assert "Push/Pull/Legs" in profile.profile_text({**profile.DEFAULTS, "gym_split": "Push/Pull/Legs"})
+
+
+def test_profile_api_saves_gym_split():
+    c = TestClient(app)
+    r = c.put("/api/profile", json={"gym_split": "Push/Pull/Legs"})
+    assert r.status_code == 200 and r.json()["gym_split"] == "Push/Pull/Legs"
+    assert c.get("/api/profile").json()["gym_split"] == "Push/Pull/Legs"

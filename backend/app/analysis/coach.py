@@ -127,6 +127,7 @@ def build_context(today: datetime | None = None) -> dict:
         "sport_metrics": sm_all_summary,
         "all_swims_last_120_days": swims,
         "gym_lifts": lifts.coach_summary(),
+        "recent_gym_sessions": lifts.recent_session_summaries(),
         "all_runs_last_6_months": runs,
         "recent_non_run_activities": recent,
     }
