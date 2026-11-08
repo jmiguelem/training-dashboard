@@ -9,6 +9,7 @@ from ..db import get_db
 from .. import lifts, plan, sleep_schedule
 from .. import profile as prof
 from . import sport_metrics
+from .knowledge import TRAINING_KNOWLEDGE
 from .metrics import compute, normalize_sport, parse_ts, sport_group
 
 SYSTEM_TEMPLATE = """\
@@ -16,6 +17,7 @@ You are a careful, practical endurance and strength coach for one athlete. You o
 
 About the athlete:
 {profile}
+{knowledge}
 Rules:
 - Ground every claim in the numbers provided. Quote the actual values. If data is missing or too thin to conclude, say so.
 - Tie advice to the athlete's goal and race date. Say how today's advice moves them toward it.
@@ -196,7 +198,7 @@ def _system_with_data(ctx: dict) -> str:
             f"- {n['week_key']}: {n['text']}" for n in notes
         )
     return (
-        SYSTEM_TEMPLATE.format(profile=prof.profile_text())
+        SYSTEM_TEMPLATE.format(profile=prof.profile_text(), knowledge=TRAINING_KNOWLEDGE)
         + notes_txt
         + "\n\nAthlete data (JSON):\n"
         + json.dumps(ctx, indent=1)
@@ -235,7 +237,8 @@ def weekly_summary(force: bool = False) -> dict:
         "Fields:\n"
         "- review: under 200 words, plain text. If your recent recommendations are listed above, say whether "
         "the data shows they were followed. Then what is going well, what to watch, and progress toward the "
-        "goal and race date (use goal_progress). Quote numbers. End with one sentence on when to stop and see a professional.\n"
+        "goal and race date (use goal_progress: its benchmarks count only the last 8 weeks, and it gives the suggested phase "
+        "and whether a recovery week is due). Quote numbers. End with one sentence on when to stop and see a professional.\n"
         "- focus: one sentence naming the theme of the week.\n"
         "- sessions: one entry per planned session, up to 14. A day may have two sessions (for example a run "
         "and a short gym session) and a day with nothing planned is a rest day. Leave at least one day completely empty as a full rest day. "
@@ -298,42 +301,84 @@ def latest_summary() -> dict | None:
     return None
 
 
+RECENT_WEEKS = 8
+
+
+def phase_for(weeks: int | None) -> str | None:
+    if weeks is None:
+        return None
+    if weeks <= 0:
+        return "race week"
+    if weeks <= 2:
+        return "taper"
+    if weeks <= 8:
+        return "peak and race-specific"
+    if weeks <= 16:
+        return "build"
+    return "base"
+
+
 def goal_progress(today: date | None = None) -> dict:
-    """Longest single session per sport against rule-of-thumb readiness targets, plus run volume."""
+    """Readiness from RECENT sessions (last 8 weeks) per sport against rule-of-thumb benchmarks.
+    Old bests show past capacity, so they are reported but not counted as current readiness."""
+    today = today or plan.local_today()
     p = prof.get_profile()
     with get_db() as conn:
         rows = _rows(
             conn,
-            "SELECT sport, start, distance_m, avg_speed_ms FROM garmin_activity "
+            "SELECT sport, start, distance_m, duration_s, avg_speed_ms FROM garmin_activity "
             "WHERE start >= datetime('now', '-365 days')",
         )
-    best = {"Run": 0.0, "Swim": 0.0, "Bike": 0.0}
+    cut = today - timedelta(days=RECENT_WEEKS * 7)
+    best = {g: {"km": 0.0, "date": None} for g in TARGETS}
+    recent = {g: {"km": 0.0, "date": None} for g in TARGETS}
+    weekly_min: dict[date, float] = {}
     for r in rows:
+        day = parse_ts(r["start"]).astimezone().date()
+        monday = day - timedelta(days=day.weekday())
+        weekly_min[monday] = weekly_min.get(monday, 0) + (r["duration_s"] or 0) / 60
         g = sport_group(normalize_sport(r["sport"], r["avg_speed_ms"]))
-        if g in best:
-            best[g] = max(best[g], (r["distance_m"] or 0) / 1000)
-    ctx_metrics = compute(
-        [{**r, "duration_s": 0, "avg_hr": None} for r in rows if sport_group(r["sport"]) == "Run"],
-        [], [], today=today,
-    )["metrics"]
+        if g not in TARGETS:
+            continue
+        km = (r["distance_m"] or 0) / 1000
+        if km > best[g]["km"]:
+            best[g] = {"km": km, "date": day}
+        if day >= cut and km > recent[g]["km"]:
+            recent[g] = {"km": km, "date": day}
+    this_monday = today - timedelta(days=today.weekday())
+    last4 = [round(weekly_min.get(this_monday - timedelta(weeks=k), 0)) for k in (4, 3, 2, 1)]
+    run_rows = [{**r, "duration_s": 0, "avg_hr": None} for r in rows if sport_group(r["sport"]) == "Run"]
+    run4 = compute(run_rows, [], [], today=today)["metrics"]["run_km_4w"]
     wk = prof.weeks_to_race(p, today)
-    items = [
-        {
-            "sport": g,
-            "longest_km": round(best[g], 2),
-            "target_km": TARGETS[g],
-            "percent": min(100, round(best[g] / TARGETS[g] * 100)),
-        }
-        for g in ("Run", "Swim", "Bike")
-    ]
+    items = []
+    for g in ("Run", "Swim", "Bike"):
+        b, rc = best[g], recent[g]
+        items.append(
+            {
+                "sport": g,
+                "target_km": TARGETS[g],
+                "longest_recent_km": round(rc["km"], 2),
+                "longest_recent_date": rc["date"].isoformat() if rc["date"] else None,
+                "best_12m_km": round(b["km"], 2),
+                "best_12m_date": b["date"].isoformat() if b["date"] else None,
+                "weeks_since_best": (today - b["date"]).days // 7 if b["date"] else None,
+                "percent": min(100, round(rc["km"] / TARGETS[g] * 100)),
+            }
+        )
     return {
         "goal": p["goal"],
         "race_name": p["race_name"],
         "race_date": p["race_date"],
         "weeks_to_race": wk,
+        "suggested_phase": phase_for(wk),
         "items": items,
-        "run_km_last_4_weeks": ctx_metrics["run_km_4w"],
-        "note": "Targets are rule-of-thumb longest-session benchmarks for a half Ironman, not a plan.",
+        "run_km_last_4_weeks": run4,
+        "weekly_training_minutes_last_4_full_weeks": last4,
+        "recovery_week_suggested": len(last4) == 4 and last4[1] < last4[2] < last4[3],
+        "note": (
+            f"Readiness counts only the last {RECENT_WEEKS} weeks; older bests show past capacity. "
+            "Targets are rule-of-thumb longest-session benchmarks for a half Ironman, not a plan."
+        ),
     }
 
 

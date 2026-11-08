@@ -199,20 +199,51 @@ def test_unreadable_plan_is_not_saved(monkeypatch):
     assert coach.latest_summary() is None
 
 
-def test_goal_progress_tracks_longest_session_per_sport():
+def test_goal_progress_counts_recent_sessions_not_old_bests():
     with get_db() as conn:
-        for i, (sport, m, spd) in enumerate(
-            [("running", 5130, 2.1), ("running", 2240, 2.0), ("lap_swimming", 1000, 0.6),
-             ("treadmill_running", 325, 0.2)]
+        for i, (sport, m, spd, days) in enumerate(
+            [("running", 5130, 2.1, 10), ("running", 2240, 2.0, 12), ("lap_swimming", 1000, 0.6, 10),
+             ("lap_swimming", 4580, 0.85, 110), ("treadmill_running", 325, 0.2, 10)]
         ):
             conn.execute(
                 "INSERT INTO garmin_activity (id, sport, start, distance_m, avg_speed_ms, raw) "
-                "VALUES (?, ?, datetime('now', '-10 days'), ?, ?, '{}')", (i + 1, sport, m, spd))
+                "VALUES (?, ?, datetime('now', ?), ?, ?, '{}')", (i + 1, sport, f"-{days} days", m, spd))
     g = coach.goal_progress()
     by = {i["sport"]: i for i in g["items"]}
-    assert by["Run"]["longest_km"] == 5.13 and by["Run"]["percent"] == 28
-    assert by["Swim"]["longest_km"] == 1.0 and by["Bike"]["longest_km"] == 0
-    assert g["weeks_to_race"] is not None
+    assert by["Run"]["longest_recent_km"] == 5.13 and by["Run"]["percent"] == 28
+    swim = by["Swim"]
+    assert swim["longest_recent_km"] == 1.0 and swim["percent"] == 53  # the 4.58 km swim is 110 days old
+    assert swim["best_12m_km"] == 4.58 and swim["weeks_since_best"] in (15, 16)
+    assert by["Bike"]["longest_recent_km"] == 0 and by["Bike"]["best_12m_date"] is None
+    assert g["weeks_to_race"] is not None and "last 8 weeks" in g["note"]
+
+
+def test_phase_by_weeks_to_race():
+    assert [coach.phase_for(w) for w in (None, 0, 2, 8, 12, 17)] == [
+        None, "race week", "taper", "peak and race-specific", "build", "base"]
+
+
+def test_recovery_week_suggested_after_three_rising_weeks():
+    from datetime import timedelta
+
+    from app import plan as _plan
+
+    monday = _plan.local_today() - timedelta(days=_plan.local_today().weekday())
+    with get_db() as conn:
+        for i, (weeks_back, minutes) in enumerate([(4, 100), (3, 150), (2, 200), (1, 260)]):
+            day = monday - timedelta(weeks=weeks_back) + timedelta(days=2)
+            conn.execute("INSERT INTO garmin_activity (id, sport, start, duration_s, raw) "
+                         "VALUES (?, 'strength_training', ?, ?, '{}')", (i + 1, f"{day} 15:00:00", minutes * 60))
+    g = coach.goal_progress()
+    assert g["weekly_training_minutes_last_4_full_weeks"] == [100, 150, 200, 260]
+    assert g["recovery_week_suggested"] is True
+
+
+def test_knowledge_is_in_every_prompt(fake):
+    coach.chat("hi")
+    sys_prompt = fake.calls[0]["system"]
+    assert "Periodization" in sys_prompt and "80 percent" in sys_prompt and "Maffetone" in sys_prompt
+
 
 
 def test_coach_sees_individual_swims(fake):

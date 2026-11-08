@@ -8,8 +8,20 @@ type Goal = {
   race_name: string
   race_date: string
   weeks_to_race: number | null
-  items: { sport: string; longest_km: number; target_km: number; percent: number }[]
+  suggested_phase: string | null
+  items: {
+    sport: string
+    target_km: number
+    longest_recent_km: number
+    longest_recent_date: string | null
+    best_12m_km: number
+    best_12m_date: string | null
+    weeks_since_best: number | null
+    percent: number
+  }[]
   run_km_last_4_weeks: number
+  weekly_training_minutes_last_4_full_weeks: number[]
+  recovery_week_suggested: boolean
   note: string
 }
 type Profile = {
@@ -60,18 +72,27 @@ function GoalCard({ goal }: { goal: Goal }) {
         </span>
       </div>
       <p className="secondary mt-1 text-sm">{goal.goal}</p>
-      <div className="mt-3 space-y-2">
+      {goal.suggested_phase && (
+        <p className="mt-2 text-sm">
+          <span className="muted">Phase by calendar: </span>
+          <span className="font-medium capitalize">{goal.suggested_phase}</span>
+          {goal.recovery_week_suggested && (
+            <span className="secondary"> · ⚑ Recovery week due after 3 rising weeks</span>
+          )}
+        </p>
+      )}
+      <div className="mt-3 space-y-3">
         {goal.items.map((i) => (
           <div key={i.sport}>
-            <div className="flex justify-between text-sm">
+            <div className="flex flex-wrap justify-between gap-x-3 text-sm">
               <span>{i.sport}</span>
               <span className="secondary tabular-nums">
-                longest {i.longest_km} km of {i.target_km} km
+                last 8 weeks: {i.longest_recent_km} km of {i.target_km} km
               </span>
             </div>
             <div
               role="progressbar"
-              aria-label={`${i.sport} readiness`}
+              aria-label={`${i.sport} readiness from the last 8 weeks`}
               aria-valuenow={i.percent}
               aria-valuemin={0}
               aria-valuemax={100}
@@ -83,6 +104,16 @@ function GoalCard({ goal }: { goal: Goal }) {
                 style={{ width: `${i.percent}%`, background: 'var(--series-1)' }}
               />
             </div>
+            {i.best_12m_date && i.best_12m_km > i.longest_recent_km && (
+              <p className="muted mt-1 text-xs">
+                Older best: {i.best_12m_km} km on{' '}
+                {new Date(i.best_12m_date + 'T12:00:00').toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}{' '}
+                ({i.weeks_since_best} weeks ago), not counted as current fitness.
+              </p>
+            )}
           </div>
         ))}
       </div>
