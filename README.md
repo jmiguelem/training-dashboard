@@ -26,3 +26,6 @@ First-time connections:
 - Garmin: `cd backend && uv run python -m app.garmin.login`
 
 Then press "Sync now" in the dashboard.
+
+## Weekly auto-run
+While the backend is running, it syncs Whoop and Garmin every Sunday at 23:00 (machine local time) and writes the coach's plan for the coming week, shown on Home. If the machine was off and nothing has synced for over 8 days, it catches up on start. Set `AUTO_SYNC=0` to turn it off. "Sync now" always works on demand.

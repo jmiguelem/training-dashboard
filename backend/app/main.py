@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from . import config, lifts, profile
+from . import config, lifts, plan, profile, scheduler
 from .db import get_db, init_db
 from .analysis import coach
 from .garmin.client import GarminNotLoggedIn
@@ -16,9 +16,12 @@ from .whoop.sync import NotConnected, sync_whoop
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app_: FastAPI):
     init_db()
+    app_.state.scheduler = scheduler.start()
     yield
+    if app_.state.scheduler:
+        app_.state.scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Training Dashboard", lifespan=lifespan)
@@ -70,6 +73,8 @@ def status():
         "last_whoop_sync": _last_sync("whoop"),
         "garmin_connected": config.GARMIN_TOKENS.exists(),
         "last_garmin_sync": _last_sync("garmin"),
+        "last_auto_run": _last_sync("scheduled"),
+        "next_auto_run": scheduler.next_run(getattr(app.state, "scheduler", None)),
     }
 
 
@@ -301,3 +306,35 @@ def lifts_add(body: SetCreate):
         raise HTTPException(404, "Activity not found")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+
+class CheckBody(BaseModel):
+    item: str
+    done: bool
+
+
+@app.get("/api/plan")
+def plan_get():
+    return plan.get_plan() or {"week_key": plan.current_week_key(), "days": None}
+
+
+@app.put("/api/plan/check")
+def plan_check(body: CheckBody, week_key: str | None = None):
+    key = week_key or plan.displayed_week_key() or plan.current_week_key()
+    try:
+        plan.set_check(key, body.item, body.done)
+    except KeyError:
+        raise HTTPException(404, "No plan for this week")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return plan.get_plan(key)
+
+
+@app.post("/api/plan/generate")
+def plan_generate():
+    """Generate (or regenerate) the plan for the target week, then return the displayed week's plan."""
+    try:
+        coach.weekly_summary(force=True)
+    except coach.CoachUnavailable as exc:
+        raise HTTPException(503, str(exc))
+    return plan.get_plan() or {"week_key": plan.current_week_key(), "days": None}

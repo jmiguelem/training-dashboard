@@ -6,7 +6,7 @@ import anthropic
 
 from .. import config
 from ..db import get_db
-from .. import lifts
+from .. import lifts, plan
 from .. import profile as prof
 from . import sport_metrics
 from .metrics import compute, normalize_sport, parse_ts, sport_group
@@ -152,7 +152,7 @@ def _client() -> anthropic.Anthropic:
         ) from exc
 
 
-def _call(system: str, messages: list[dict], max_tokens: int) -> str:
+def _call(system: str, messages: list[dict], max_tokens: int, schema: dict | None = None) -> str:
     client = _client()
     try:
         resp = client.messages.create(
@@ -160,7 +160,8 @@ def _call(system: str, messages: list[dict], max_tokens: int) -> str:
             max_tokens=max_tokens,
             system=system,
             messages=messages,
-            output_config={"effort": "medium"},
+            output_config={"effort": "medium"}
+            | ({"format": {"type": "json_schema", "schema": schema}} if schema else {}),
         )
     except anthropic.AuthenticationError as exc:
         raise CoachUnavailable("Anthropic API key was rejected. Check ANTHROPIC_API_KEY.") from exc
@@ -205,9 +206,6 @@ def week_key(today: datetime | None = None) -> str:
     return f"{y}-W{w:02d}"
 
 
-COMMIT_MARK = "COMMITMENTS:"
-
-
 def recent_notes(n: int = 3) -> list[dict]:
     with get_db() as conn:
         rows = _rows(
@@ -216,58 +214,86 @@ def recent_notes(n: int = 3) -> list[dict]:
     return list(reversed(rows))
 
 
-def split_commitments(text: str) -> tuple[str, str | None]:
-    """The review ends with 'COMMITMENTS: a; b; c'. Return (review, commitments or None)."""
-    i = text.rfind(COMMIT_MARK)
-    if i == -1:
-        return text.strip(), None
-    body, tail = text[:i].strip(), text[i + len(COMMIT_MARK):].strip()
-    return body, tail or None
-
-
 def weekly_summary(force: bool = False) -> dict:
-    key = week_key()
+    """Review + 7-day plan + recommendations for the target week, in one structured call."""
+    key = plan.target_week_key()
     if not force:
         with get_db() as conn:
             row = conn.execute("SELECT * FROM coach_summary WHERE week_key = ?", (key,)).fetchone()
-        if row:
+        if row and plan.get_plan(key):
             return {**dict(row), "cached": True}
     ctx = build_context()
     ctx["goal_progress"] = goal_progress()
-    gym = prof.get_profile()["gym_days_per_week"]
+    p = prof.get_profile()
+    start = plan.week_start(key)
+    today = plan.local_today()
     prompt = (
-        "Write this week's review. Cover, in order and briefly: (1) if your recent recommendations are "
-        "listed above, whether the data shows they were followed; (2) what is going well; (3) what to "
-        "watch (use the flags and recovery trends); (4) progress toward the goal and race date, using "
-        "goal_progress; (5) the plan for the next 7 days as 3-5 concrete bullets that fit running "
-        f"base-building plus about {gym} gym sessions a week. Quote numbers. Keep it under 250 words and "
-        "end the review with one sentence on when to stop and see a professional. Then add one final line "
-        f"that starts with {COMMIT_MARK} followed by your 3-5 key recommendations for next week as short "
-        "items separated by semicolons (this line is stored so you can check them next week)."
+        f"Write the review and the training plan for the week of Monday {start.isoformat()} to Sunday "
+        f"{(start + timedelta(days=6)).isoformat()}. Today is {today.isoformat()}.\n"
+        "Fields:\n"
+        "- review: under 200 words, plain text. If your recent recommendations are listed above, say whether "
+        "the data shows they were followed. Then what is going well, what to watch, and progress toward the "
+        "goal and race date (use goal_progress). Quote numbers. End with one sentence on when to stop and see a professional.\n"
+        "- focus: one sentence naming the theme of the week.\n"
+        "- sessions: one entry per planned session, up to 14. A day may have two sessions (for example a run "
+        "and a short gym session) and a day with nothing planned is a rest day. Leave at least one day completely empty as a full rest day. "
+        "day is Mon to Sun. sport is run, swim, bike, gym or other. title is short (for example 'Easy run'). "
+        "details says how to do it: duration, zone or heart rate range in bpm, structure. "
+        f"Plan {p['gym_days_per_week']} gym sessions, as the athlete trains lifting that often; plan fewer only if the data "
+        "clearly calls for it, and then say why in the focus. Keep gym sessions short, and keep heavy leg work away from the "
+        "day before a run. Never stack two hard sessions in a day or on consecutive days. "
+        "duration_min is an integer. intensity is easy, moderate or hard. condition is a concrete "
+        "go/no-go rule such as 'Only if Whoop recovery is 34% or higher; otherwise walk or rest', or an empty string. "
+        "Always write the full week; days already in the past are removed automatically.\n"
+        "- recommendations: 3 to 6 short, specific items such as sleep targets or rules for when to train. "
+        "category is sleep, recovery, training, load, nutrition or other. condition is an optional rule, else an empty string.\n"
     )
-    raw = _call(_system_with_data(ctx), [{"role": "user", "content": prompt}], 8000)
-    text, commitments = split_commitments(raw)
+    system = _system_with_data(ctx)
+    messages = [{"role": "user", "content": prompt}]
+    data = None
+    for attempt in range(2):
+        raw = _call(system, messages, 12000, schema=plan.SCHEMA)
+        try:
+            data = plan.normalize(json.loads(raw))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise CoachUnavailable("The coach returned an unreadable plan. Try again.") from exc
+        if plan.has_rest_day(data) or attempt == 1:
+            break
+        messages += [
+            {"role": "assistant", "content": raw},
+            {
+                "role": "user",
+                "content": "That plan has a session on every day. Return the whole plan again with at least one "
+                "day completely empty as a full rest day. Keep the review, focus and recommendations.",
+            },
+        ]
+    if not data["review"]:
+        raise CoachUnavailable("The coach returned an empty review. Try again.")
+    plan.drop_past_days(data, start, today)
     now = datetime.now(timezone.utc).isoformat()
+    plan.save(key, config.COACH_MODEL, data)
     with get_db() as conn:
         conn.execute(
             "INSERT INTO coach_summary (week_key, created_at, model, text) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(week_key) DO UPDATE SET created_at=excluded.created_at, "
             "model=excluded.model, text=excluded.text",
-            (key, now, config.COACH_MODEL, text),
+            (key, now, config.COACH_MODEL, data["review"]),
         )
         conn.execute("DELETE FROM coach_note WHERE week_key = ?", (key,))
-        if commitments:
-            conn.execute(
-                "INSERT INTO coach_note (week_key, created_at, text) VALUES (?, ?, ?)",
-                (key, now, commitments),
-            )
-    return {"week_key": key, "created_at": now, "model": config.COACH_MODEL, "text": text, "cached": False}
+        conn.execute(
+            "INSERT INTO coach_note (week_key, created_at, text) VALUES (?, ?, ?)",
+            (key, now, plan.notes_text(data)),
+        )
+    return {"week_key": key, "created_at": now, "model": config.COACH_MODEL, "text": data["review"], "cached": False}
 
 
 def latest_summary() -> dict | None:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM coach_summary WHERE week_key = ?", (week_key(),)).fetchone()
-    return {**dict(row), "cached": True} if row else None
+        for key in (plan.displayed_week_key(), plan.target_week_key()):
+            row = conn.execute("SELECT * FROM coach_summary WHERE week_key = ?", (key,)).fetchone()
+            if row:
+                return {**dict(row), "cached": True}
+    return None
 
 
 def goal_progress(today: date | None = None) -> dict:

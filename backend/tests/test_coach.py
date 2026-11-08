@@ -8,6 +8,23 @@ from app.db import get_db
 from app.main import app
 
 
+import json as _json
+
+PLAN_JSON = _json.dumps({
+    "review": "Good week.", "focus": "Build easy aerobic base",
+    "sessions": [
+        {"day": "Tue", "sport": "run", "title": "Easy run", "details": "25 min Z2", "duration_min": 25,
+         "intensity": "easy", "condition": "Only if recovery is 34% or higher"},
+        {"day": "Sat", "sport": "gym", "title": "Lower body", "details": "45 min", "duration_min": 45,
+         "intensity": "moderate", "condition": ""},
+    ],
+    "recommendations": [
+        {"category": "sleep", "text": "Sleep 7.5 h", "condition": ""},
+        {"category": "training", "text": "Run only when recovery allows", "condition": "recovery 34%+"},
+    ],
+})
+
+
 class FakeMessages:
     def __init__(self, text="All good.", stop="end_turn"):
         self.calls = []
@@ -27,9 +44,11 @@ def fake(monkeypatch):
     return msgs
 
 
-def test_summary_is_cached_per_week(fake):
+def test_summary_is_cached_per_week(monkeypatch):
+    fake = FakeMessages(text=PLAN_JSON)
+    monkeypatch.setattr(coach, "_client", lambda: SimpleNamespace(messages=fake))
     a = coach.weekly_summary()
-    assert a["cached"] is False and a["text"] == "All good."
+    assert a["cached"] is False and a["text"] == "Good week."
     b = coach.weekly_summary()
     assert b["cached"] is True
     assert len(fake.calls) == 1
@@ -161,22 +180,23 @@ def test_weeks_to_race():
     assert profile.weeks_to_race({**p, "race_date": "2020-01-01"}, date(2026, 11, 7)) == 0
 
 
-def test_review_saves_commitments_and_next_week_sees_them(monkeypatch):
-    text = "Good week.\nCOMMITMENTS: run twice easy; sleep 7.5 h; one rest day"
-    msgs = FakeMessages(text=text)
+def test_review_saves_plan_and_notes_and_chat_sees_them(monkeypatch):
+    msgs = FakeMessages(text=PLAN_JSON)
     monkeypatch.setattr(coach, "_client", lambda: SimpleNamespace(messages=msgs))
     r = coach.weekly_summary()
     assert r["text"] == "Good week."
+    assert msgs.calls[0]["output_config"]["format"]["type"] == "json_schema"
     notes = coach.recent_notes()
-    assert notes[0]["text"] == "run twice easy; sleep 7.5 h; one rest day"
+    assert "Build easy aerobic base" in notes[0]["text"] and "Sleep 7.5 h" in notes[0]["text"]
     coach.chat("hello")
-    assert "run twice easy" in msgs.calls[-1]["system"]
+    assert "Sleep 7.5 h" in msgs.calls[-1]["system"]
 
 
-def test_review_without_commitments_line_still_saves(monkeypatch):
-    monkeypatch.setattr(coach, "_client", lambda: SimpleNamespace(messages=FakeMessages(text="Fine.")))
-    assert coach.weekly_summary()["text"] == "Fine."
-    assert coach.recent_notes() == []
+def test_unreadable_plan_is_not_saved(monkeypatch):
+    monkeypatch.setattr(coach, "_client", lambda: SimpleNamespace(messages=FakeMessages(text="not json")))
+    with pytest.raises(coach.CoachUnavailable, match="unreadable"):
+        coach.weekly_summary()
+    assert coach.latest_summary() is None
 
 
 def test_goal_progress_tracks_longest_session_per_sport():

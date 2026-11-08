@@ -64,6 +64,8 @@ export type Status = {
   garmin_connected: boolean
   last_whoop_sync: SyncInfo
   last_garmin_sync: SyncInfo
+  last_auto_run: SyncInfo
+  next_auto_run: string | null
 }
 
 export async function get<T>(path: string): Promise<T> {

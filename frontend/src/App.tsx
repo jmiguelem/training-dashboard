@@ -8,10 +8,10 @@ import Lifts from './pages/Lifts'
 import Progress from './pages/Progress'
 import Recovery from './pages/Recovery'
 import Sports from './pages/Sports'
-import Today from './pages/Today'
+import Home from './pages/Home'
 
 const NAV = [
-  { to: '/', label: 'Today' },
+  { to: '/', label: 'Home' },
   { to: '/activities', label: 'Activities' },
   { to: '/recovery', label: 'Recovery' },
   { to: '/progress', label: 'Progress' },
@@ -52,7 +52,7 @@ export default function App() {
     setReloadKey((k) => k + 1)
   }
 
-  const lastSync = [status?.last_whoop_sync, status?.last_garmin_sync]
+  const lastSync = [status?.last_whoop_sync, status?.last_garmin_sync, status?.last_auto_run]
     .map((s) => s?.finished_at)
     .filter((x): x is string => !!x)
     .sort()
@@ -91,7 +91,12 @@ export default function App() {
               (lastSync
                 ? `Synced ${new Date(lastSync).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
                 : 'Not synced')}
+            {status?.next_auto_run &&
+              ` · Auto-sync ${new Date(status.next_auto_run).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`}
           </span>
+          {status?.last_auto_run && ['error', 'partial'].includes(status.last_auto_run.status) && (
+            <span title={status.last_auto_run.detail ?? ''}>⚠ Last auto-sync had errors</span>
+          )}
           <button
             onClick={syncAll}
             disabled={syncing}
@@ -104,7 +109,7 @@ export default function App() {
       </header>
       <main>
         <Routes>
-          <Route path="/" element={<Today reloadKey={reloadKey} />} />
+          <Route path="/" element={<Home reloadKey={reloadKey} />} />
           <Route path="/activities" element={<Activities reloadKey={reloadKey} />} />
           <Route path="/recovery" element={<Recovery reloadKey={reloadKey} />} />
           <Route path="/progress" element={<Progress reloadKey={reloadKey} />} />

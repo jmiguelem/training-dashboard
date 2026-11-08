@@ -135,6 +135,18 @@ CREATE TABLE IF NOT EXISTS lift_set (
     UNIQUE (activity_id, set_index)
 );
 CREATE INDEX IF NOT EXISTS idx_lift_set_activity ON lift_set(activity_id);
+CREATE TABLE IF NOT EXISTS weekly_plan (
+    week_key TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    model TEXT NOT NULL,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS plan_check (
+    week_key TEXT NOT NULL,
+    item TEXT NOT NULL,
+    done INTEGER NOT NULL,
+    PRIMARY KEY (week_key, item)
+);
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,

@@ -22,3 +22,8 @@ WHOOP_SCOPES = "offline read:recovery read:cycles read:sleep read:workout read:p
 GARMIN_TOKENS = Path(os.getenv("GARMIN_TOKENS", ROOT / "data" / "garmin_tokens"))
 
 COACH_MODEL = os.getenv("COACH_MODEL", "claude-sonnet-5-5")
+
+AUTO_SYNC = os.getenv("AUTO_SYNC", "1") != "0"
+AUTO_SYNC_DAY = os.getenv("AUTO_SYNC_DAY", "sun")
+AUTO_SYNC_HOUR = int(os.getenv("AUTO_SYNC_HOUR", "23"))
+AUTO_SYNC_MINUTE = int(os.getenv("AUTO_SYNC_MINUTE", "0"))
