@@ -7,6 +7,7 @@ import anthropic
 from .. import config
 from ..db import get_db
 from .. import profile as prof
+from . import sport_metrics
 from .metrics import compute, normalize_sport, parse_ts, sport_group
 
 SYSTEM_TEMPLATE = """\
@@ -111,6 +112,7 @@ def build_context(today: datetime | None = None) -> dict:
         "metrics": analysis["metrics"],
         "flags": analysis["flags"],
         "daily_last_14_days": dict(sorted(daily.items())),
+        "sport_metrics": sport_metrics.coach_summary(sport_metrics.load(365)),
         "all_runs_last_6_months": runs,
         "recent_non_run_activities": recent,
     }

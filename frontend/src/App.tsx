@@ -6,6 +6,7 @@ import Coach from './pages/Coach'
 import Insights from './pages/Insights'
 import Progress from './pages/Progress'
 import Recovery from './pages/Recovery'
+import Sports from './pages/Sports'
 import Today from './pages/Today'
 
 const NAV = [
@@ -13,6 +14,7 @@ const NAV = [
   { to: '/activities', label: 'Activities' },
   { to: '/recovery', label: 'Recovery' },
   { to: '/progress', label: 'Progress' },
+  { to: '/sports', label: 'Sports' },
   { to: '/insights', label: 'Insights' },
   { to: '/coach', label: 'Coach' },
 ]
@@ -104,6 +106,7 @@ export default function App() {
           <Route path="/activities" element={<Activities reloadKey={reloadKey} />} />
           <Route path="/recovery" element={<Recovery reloadKey={reloadKey} />} />
           <Route path="/progress" element={<Progress reloadKey={reloadKey} />} />
+          <Route path="/sports" element={<Sports reloadKey={reloadKey} />} />
           <Route path="/insights" element={<Insights reloadKey={reloadKey} />} />
           <Route path="/coach" element={<Coach reloadKey={reloadKey} />} />
         </Routes>

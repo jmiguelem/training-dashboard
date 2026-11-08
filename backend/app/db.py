@@ -115,6 +115,10 @@ CREATE TABLE IF NOT EXISTS coach_note (
     created_at TEXT NOT NULL,
     text TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS garmin_laps (
+    activity_id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,

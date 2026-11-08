@@ -14,6 +14,11 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
   --series-5: #e87ba4;
+  --zone-1: #9ec5f4;
+  --zone-2: #6da7ec;
+  --zone-3: #2a78d6;
+  --zone-4: #1c5cab;
+  --zone-5: #104281;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -30,6 +35,11 @@
     --series-3: #199e70;
     --series-4: #c98500;
     --series-5: #d55181;
+    --zone-1: #184f95;
+    --zone-2: #256abf;
+    --zone-3: #3987e5;
+    --zone-4: #6da7ec;
+    --zone-5: #9ec5f4;
   }
 }
 

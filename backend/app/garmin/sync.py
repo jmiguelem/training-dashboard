@@ -56,6 +56,41 @@ def upsert_daily(conn, day: str, stats: dict, metrics) -> None:
     )
 
 
+LAP_SPORTS = ("running", "swim", "cycling", "biking", "ride")
+MAX_LAP_FETCH = 120
+
+
+def _needs_laps(conn) -> list[int]:
+    rows = conn.execute(
+        "SELECT a.id, a.sport FROM garmin_activity a LEFT JOIN garmin_laps l ON l.activity_id = a.id "
+        "WHERE l.activity_id IS NULL ORDER BY a.start DESC"
+    ).fetchall()
+    return [r["id"] for r in rows if any(k in (r["sport"] or "") for k in LAP_SPORTS)][:MAX_LAP_FETCH]
+
+
+def sync_laps(api) -> int:
+    """Fetch per-lap data for run/swim/bike activities once. Failures are retried next sync."""
+    with get_db() as conn:
+        todo = _needs_laps(conn)
+    done = 0
+    for aid in todo:
+        try:
+            laps = (api.get_activity_splits(str(aid)) or {}).get("lapDTOs") or []
+        except Exception:
+            continue
+        keep = [
+            {k: v for k, v in lap.items() if not isinstance(v, (dict, list)) and "Latitude" not in k and "Longitude" not in k}
+            for lap in laps
+        ]
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO garmin_laps (activity_id, data) VALUES (?, ?)",
+                (aid, json.dumps(keep)),
+            )
+        done += 1
+    return done
+
+
 def _last_ok() -> datetime | None:
     with get_db() as conn:
         row = conn.execute(
@@ -86,6 +121,7 @@ def sync_garmin() -> dict:
             for a in activities:
                 upsert_activity(conn, a)
         counts["activities"] = len(activities)
+        counts["laps"] = sync_laps(api)
         day = daily_start
         while day <= today:
             iso = day.isoformat()

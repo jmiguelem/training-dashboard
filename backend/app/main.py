@@ -250,3 +250,10 @@ def coach_chat(req: ChatRequest):
         raise HTTPException(400, str(exc))
     except coach.CoachUnavailable as exc:
         raise HTTPException(503, str(exc))
+
+
+@app.get("/api/sport-metrics")
+def sport_metrics(days: int = Query(365, ge=7, le=730)):
+    from .analysis import sport_metrics as sm
+
+    return sm.load(days)
