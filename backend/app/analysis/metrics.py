@@ -11,6 +11,16 @@ def parse_ts(s: str) -> datetime:
     return datetime.fromisoformat(s.replace(" ", "T")).replace(tzinfo=timezone.utc)
 
 
+WALK_SPEED_MS = 1.4  # below ~11:55 /km a "run" is really walking (slowest real run here: 1.67)
+
+
+def normalize_sport(sport: str | None, speed_ms: float | None) -> str | None:
+    """Garmin sometimes files treadmill walks as runs. Reclassify implausibly slow runs."""
+    if sport and "running" in sport and speed_ms is not None and speed_ms < WALK_SPEED_MS:
+        return "walking"
+    return sport
+
+
 def sport_group(sport: str | None) -> str:
     s = sport or ""
     if "running" in s:
@@ -43,7 +53,7 @@ def _in_window(dt: datetime, today: date, start_ago: int, end_ago: int) -> bool:
 
 def compute(activities, recovery, sleep, today: date | None = None) -> dict:
     today = today or datetime.now(timezone.utc).date()
-    acts = [{**a, "_dt": parse_ts(a["start"]), "_g": sport_group(a["sport"])} for a in activities]
+    acts = [{**a, "_dt": parse_ts(a["start"]), "_g": sport_group(normalize_sport(a["sport"], a.get("avg_speed_ms")))} for a in activities]
     minutes = lambda xs: sum((a["duration_s"] or 0) for a in xs) / 60  # noqa: E731
 
     def window(start_ago, end_ago=0):

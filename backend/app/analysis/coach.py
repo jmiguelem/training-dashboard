@@ -6,7 +6,7 @@ import anthropic
 
 from .. import config
 from ..db import get_db
-from .metrics import compute, parse_ts, sport_group
+from .metrics import compute, normalize_sport, parse_ts, sport_group
 
 # Edit this to change what the coach knows about you.
 PROFILE = """\
@@ -90,6 +90,7 @@ def build_context(today: datetime | None = None) -> dict:
 
     recent = []
     for a in acts[-MAX_ACTIVITIES:]:
+        a = {**a, "sport": normalize_sport(a["sport"], a["avg_speed_ms"])}
         km = (a["distance_m"] or 0) / 1000
         recent.append(
             {

@@ -144,7 +144,12 @@ def activities(days: int = Query(90, ge=1, le=730), sport: str | None = None):
     if sport:
         sql += " AND sport = ?"
         params += (sport,)
-    return _rows(sql + " ORDER BY start", params)
+    from .analysis.metrics import normalize_sport
+
+    rows = _rows(sql + " ORDER BY start", params)
+    for r in rows:
+        r["sport"] = normalize_sport(r["sport"], r["avg_speed_ms"])
+    return rows
 
 
 @app.get("/api/garmin/daily")

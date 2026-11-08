@@ -71,3 +71,15 @@ def test_run_efficiency_improving():
     r = compute(old + mid + new, [], [], today=TODAY)
     assert r["metrics"]["run_efficiency_change_pct"] > 2
     assert "Running efficiency improving" in titles(r)
+
+
+def test_slow_treadmill_run_is_walking_not_a_run():
+    from app.analysis.metrics import normalize_sport
+
+    assert normalize_sport("treadmill_running", 0.2) == "walking"
+    assert normalize_sport("running", 1.67) == "running"
+    assert normalize_sport("lap_swimming", 0.1) == "lap_swimming"
+    walk = act(3, minutes=27, sport="treadmill_running", km=0.33, hr=114.0, speed=0.2)
+    r = compute([walk], [], [], today=TODAY)
+    assert r["metrics"]["run_km_4w"] == 0
+    assert r["metrics"]["longest_run_km"] == 0
