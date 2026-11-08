@@ -1,36 +1,31 @@
 """Claude-powered coach: weekly review and chat, grounded in the user's own data."""
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import anthropic
 
 from .. import config
 from ..db import get_db
+from .. import profile as prof
 from .metrics import compute, normalize_sport, parse_ts, sport_group
 
-# Edit this to change what the coach knows about you.
-PROFILE = """\
-- Started training recently: zero running experience before this.
-- Long-term goal: a half Ironman (1.9 km swim, 90 km bike, 21.1 km run) in about 12 months (around Nov 2027).
-- Near-term goal: build a running base while keeping gym training.
-- Lifts weights about 4 times a week.
-- Max heart rate: 190 bpm (as stated by the athlete). Zones as % of max: Z1 95-113, Z2 114-132, Z3 133-151, Z4 152-170, Z5 171-190 bpm. Easy running should sit in Z2, at most the low end of Z3.
-- Devices: Garmin watch (activities), Whoop (recovery, sleep, strain).
-"""
-
-SYSTEM = f"""\
-You are a careful, practical endurance and strength coach for one athlete. You only know what is in the data below.
+SYSTEM_TEMPLATE = """\
+You are a careful, practical endurance and strength coach for one athlete. You only know what is in the data below. You remember the athlete's goal, profile, earlier chat and your own past recommendations, all given below.
 
 About the athlete:
-{PROFILE}
+{profile}
 Rules:
 - Ground every claim in the numbers provided. Quote the actual values. If data is missing or too thin to conclude, say so.
+- Tie advice to the athlete's goal and race date. Say how today's advice moves them toward it.
 - Be concise and direct. Plain text only: short paragraphs and simple "-" lists, no markdown headings, no bold, no tables.
 - Prioritise injury prevention and gradual progression for a beginner runner (about +10% weekly volume, easy aerobic running, enough rest).
 - Whoop recovery under 34 percent is low, 34-66 moderate, 67+ high. Treat HRV and resting HR as trends against the athlete's own baseline, not absolute targets.
 - You are not a doctor. For pain, dizziness, chest symptoms or anything that sounds medical, tell them to stop and see a professional.
 - Do not invent workouts the data does not support. Suggestions should be concrete (what, how long, how hard) and fit the stated goals.
 """
+
+# Rule-of-thumb readiness targets for a half Ironman (longest single session before race day).
+TARGETS = {"Run": 18.0, "Swim": 1.9, "Bike": 80.0}  # km
 
 MAX_ACTIVITIES = 25
 DAILY_DAYS = 14
@@ -175,12 +170,43 @@ def _call(system: str, messages: list[dict], max_tokens: int) -> str:
 
 
 def _system_with_data(ctx: dict) -> str:
-    return SYSTEM + "\nAthlete data (JSON):\n" + json.dumps(ctx, indent=1)
+    notes = recent_notes(3)
+    notes_txt = ""
+    if notes:
+        notes_txt = "\nYour own recent recommendations to this athlete (check whether they were followed):\n" + "\n".join(
+            f"- {n['week_key']}: {n['text']}" for n in notes
+        )
+    return (
+        SYSTEM_TEMPLATE.format(profile=prof.profile_text())
+        + notes_txt
+        + "\n\nAthlete data (JSON):\n"
+        + json.dumps(ctx, indent=1)
+    )
 
 
 def week_key(today: datetime | None = None) -> str:
     y, w, _ = (today or datetime.now(timezone.utc)).isocalendar()
     return f"{y}-W{w:02d}"
+
+
+COMMIT_MARK = "COMMITMENTS:"
+
+
+def recent_notes(n: int = 3) -> list[dict]:
+    with get_db() as conn:
+        rows = _rows(
+            conn, "SELECT week_key, created_at, text FROM coach_note ORDER BY id DESC LIMIT ?", (n,)
+        )
+    return list(reversed(rows))
+
+
+def split_commitments(text: str) -> tuple[str, str | None]:
+    """The review ends with 'COMMITMENTS: a; b; c'. Return (review, commitments or None)."""
+    i = text.rfind(COMMIT_MARK)
+    if i == -1:
+        return text.strip(), None
+    body, tail = text[:i].strip(), text[i + len(COMMIT_MARK):].strip()
+    return body, tail or None
 
 
 def weekly_summary(force: bool = False) -> dict:
@@ -191,12 +217,20 @@ def weekly_summary(force: bool = False) -> dict:
         if row:
             return {**dict(row), "cached": True}
     ctx = build_context()
+    ctx["goal_progress"] = goal_progress()
+    gym = prof.get_profile()["gym_days_per_week"]
     prompt = (
-        "Write this week's review. Cover, in order and briefly: what is going well, what to watch "
-        "(use the flags and recovery trends), and the plan for the next 7 days as 3-5 concrete bullets "
-        "that fit running base-building plus 4 gym sessions a week. Quote numbers. Keep it under 250 words and end with one sentence on when to stop and see a professional."
+        "Write this week's review. Cover, in order and briefly: (1) if your recent recommendations are "
+        "listed above, whether the data shows they were followed; (2) what is going well; (3) what to "
+        "watch (use the flags and recovery trends); (4) progress toward the goal and race date, using "
+        "goal_progress; (5) the plan for the next 7 days as 3-5 concrete bullets that fit running "
+        f"base-building plus about {gym} gym sessions a week. Quote numbers. Keep it under 250 words and "
+        "end the review with one sentence on when to stop and see a professional. Then add one final line "
+        f"that starts with {COMMIT_MARK} followed by your 3-5 key recommendations for next week as short "
+        "items separated by semicolons (this line is stored so you can check them next week)."
     )
-    text = _call(_system_with_data(ctx), [{"role": "user", "content": prompt}], 8000)
+    raw = _call(_system_with_data(ctx), [{"role": "user", "content": prompt}], 8000)
+    text, commitments = split_commitments(raw)
     now = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
         conn.execute(
@@ -205,6 +239,12 @@ def weekly_summary(force: bool = False) -> dict:
             "model=excluded.model, text=excluded.text",
             (key, now, config.COACH_MODEL, text),
         )
+        conn.execute("DELETE FROM coach_note WHERE week_key = ?", (key,))
+        if commitments:
+            conn.execute(
+                "INSERT INTO coach_note (week_key, created_at, text) VALUES (?, ?, ?)",
+                (key, now, commitments),
+            )
     return {"week_key": key, "created_at": now, "model": config.COACH_MODEL, "text": text, "cached": False}
 
 
@@ -214,14 +254,80 @@ def latest_summary() -> dict | None:
     return {**dict(row), "cached": True} if row else None
 
 
-def chat(messages: list[dict]) -> str:
-    clean = [
-        {"role": m["role"], "content": m["content"]}
-        for m in messages[-20:]
-        if m.get("role") in ("user", "assistant") and str(m.get("content", "")).strip()
+def goal_progress(today: date | None = None) -> dict:
+    """Longest single session per sport against rule-of-thumb readiness targets, plus run volume."""
+    p = prof.get_profile()
+    with get_db() as conn:
+        rows = _rows(
+            conn,
+            "SELECT sport, start, distance_m, avg_speed_ms FROM garmin_activity "
+            "WHERE start >= datetime('now', '-365 days')",
+        )
+    best = {"Run": 0.0, "Swim": 0.0, "Bike": 0.0}
+    for r in rows:
+        g = sport_group(normalize_sport(r["sport"], r["avg_speed_ms"]))
+        if g in best:
+            best[g] = max(best[g], (r["distance_m"] or 0) / 1000)
+    ctx_metrics = compute(
+        [{**r, "duration_s": 0, "avg_hr": None} for r in rows if sport_group(r["sport"]) == "Run"],
+        [], [], today=today,
+    )["metrics"]
+    wk = prof.weeks_to_race(p, today)
+    items = [
+        {
+            "sport": g,
+            "longest_km": round(best[g], 2),
+            "target_km": TARGETS[g],
+            "percent": min(100, round(best[g] / TARGETS[g] * 100)),
+        }
+        for g in ("Run", "Swim", "Bike")
     ]
-    if not clean or clean[-1]["role"] != "user":
-        raise ValueError("Last message must be from the user")
-    while clean and clean[0]["role"] != "user":
-        clean.pop(0)
-    return _call(_system_with_data(build_context()), clean, 8000)
+    return {
+        "goal": p["goal"],
+        "race_name": p["race_name"],
+        "race_date": p["race_date"],
+        "weeks_to_race": wk,
+        "items": items,
+        "run_km_last_4_weeks": ctx_metrics["run_km_4w"],
+        "note": "Targets are rule-of-thumb longest-session benchmarks for a half Ironman, not a plan.",
+    }
+
+
+# --- Saved chat -------------------------------------------------------------
+
+HISTORY_LIMIT = 30
+
+
+def chat_history(limit: int = 200) -> list[dict]:
+    with get_db() as conn:
+        rows = _rows(
+            conn,
+            "SELECT role, content, created_at FROM chat_message ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+    return list(reversed(rows))
+
+
+def clear_chat() -> None:
+    with get_db() as conn:
+        conn.execute("DELETE FROM chat_message")
+
+
+def chat(message: str) -> str:
+    message = message.strip()
+    if not message:
+        raise ValueError("Message is empty")
+    history = [{"role": m["role"], "content": m["content"]} for m in chat_history(HISTORY_LIMIT)]
+    while history and history[0]["role"] != "user":
+        history.pop(0)
+    messages = history + [{"role": "user", "content": message}]
+    ctx = build_context()
+    ctx["goal_progress"] = goal_progress()
+    reply = _call(_system_with_data(ctx), messages, 8000)
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.executemany(
+            "INSERT INTO chat_message (role, content, created_at) VALUES (?, ?, ?)",
+            [("user", message, now), ("assistant", reply, now)],
+        )
+    return reply

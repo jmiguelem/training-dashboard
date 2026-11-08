@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from . import config
+from . import config, profile
 from .db import get_db, init_db
 from .analysis import coach
 from .garmin.client import GarminNotLoggedIn
@@ -180,13 +180,42 @@ def insights():
     return compute(acts, rec, sl)
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]
+    message: str
+
+
+class ProfileUpdate(BaseModel):
+    goal: str | None = None
+    race_name: str | None = None
+    race_date: str | None = None
+    max_hr: int | None = None
+    gym_days_per_week: int | None = None
+    background: str | None = None
+    injuries: str | None = None
+    notes: str | None = None
+
+
+@app.get("/api/profile")
+def profile_get():
+    return profile.get_profile()
+
+
+@app.put("/api/profile")
+def profile_put(update: ProfileUpdate):
+    try:
+        return profile.save_profile(update.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/coach/goal")
+def coach_goal():
+    return coach.goal_progress()
+
+
+@app.get("/api/coach/notes")
+def coach_notes():
+    return coach.recent_notes(3)
 
 
 @app.get("/api/coach/summary")
@@ -202,10 +231,21 @@ def coach_summary_post(force: bool = False):
         raise HTTPException(503, str(exc))
 
 
+@app.get("/api/coach/chat")
+def coach_chat_history():
+    return {"messages": coach.chat_history()}
+
+
+@app.delete("/api/coach/chat")
+def coach_chat_clear():
+    coach.clear_chat()
+    return {"ok": True}
+
+
 @app.post("/api/coach/chat")
 def coach_chat(req: ChatRequest):
     try:
-        return {"reply": coach.chat([m.model_dump() for m in req.messages])}
+        return {"reply": coach.chat(req.message)}
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except coach.CoachUnavailable as exc:
