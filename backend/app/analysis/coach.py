@@ -153,6 +153,8 @@ def _call(system: str, messages: list[dict], max_tokens: int) -> str:
             "Could not authenticate with Anthropic. Set ANTHROPIC_API_KEY in .env and restart "
             "the backend. (A stale `ant auth` profile on this machine can also cause this.)"
         ) from exc
+    if resp.stop_reason == "max_tokens":
+        raise CoachUnavailable("The reply was cut off. Try again or ask a shorter question.")
     if resp.stop_reason == "refusal":
         raise CoachUnavailable("The model declined this request. Try rephrasing.")
     text = "".join(b.text for b in resp.content if b.type == "text").strip()
@@ -181,9 +183,9 @@ def weekly_summary(force: bool = False) -> dict:
     prompt = (
         "Write this week's review. Cover, in order and briefly: what is going well, what to watch "
         "(use the flags and recovery trends), and the plan for the next 7 days as 3-5 concrete bullets "
-        "that fit running base-building plus 4 gym sessions a week. Quote numbers. Under 250 words."
+        "that fit running base-building plus 4 gym sessions a week. Quote numbers. Keep it under 250 words and end with one sentence on when to stop and see a professional."
     )
-    text = _call(_system_with_data(ctx), [{"role": "user", "content": prompt}], 1500)
+    text = _call(_system_with_data(ctx), [{"role": "user", "content": prompt}], 8000)
     now = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
         conn.execute(
@@ -211,4 +213,4 @@ def chat(messages: list[dict]) -> str:
         raise ValueError("Last message must be from the user")
     while clean and clean[0]["role"] != "user":
         clean.pop(0)
-    return _call(_system_with_data(build_context()), clean, 1500)
+    return _call(_system_with_data(build_context()), clean, 8000)

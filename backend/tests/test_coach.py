@@ -86,3 +86,11 @@ def test_credential_errors_become_unavailable(monkeypatch):
     monkeypatch.setattr(coach, "_client", lambda: SimpleNamespace(messages=Boom()))
     with pytest.raises(coach.CoachUnavailable, match="ANTHROPIC_API_KEY"):
         coach.chat([{"role": "user", "content": "x"}])
+
+
+def test_truncated_reply_is_not_returned(monkeypatch):
+    monkeypatch.setattr(coach, "_client", lambda: SimpleNamespace(messages=FakeMessages(stop="max_tokens")))
+    with pytest.raises(coach.CoachUnavailable, match="cut off"):
+        coach.weekly_summary()
+    with get_db() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM coach_summary").fetchone()[0] == 0
