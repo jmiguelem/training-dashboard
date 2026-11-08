@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { Cycle, Recovery, Sleep } from '../api'
+import SleepSchedule from '../components/SleepSchedule'
 import { ChartCard, Loading, RangePicker, tooltipStyle } from '../components/ui'
 import { hours, parseTs, shortDate } from '../lib/format'
 import { useApi } from '../lib/useApi'
@@ -108,6 +109,7 @@ export default function RecoveryPage({ reloadKey }: { reloadKey: number }) {
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
+      <SleepSchedule reloadKey={reloadKey} />
     </div>
   )
 }

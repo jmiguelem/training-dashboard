@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from . import config, lifts, plan, profile, scheduler
+from . import config, lifts, plan, profile, scheduler, sleep_schedule
 from .db import get_db, init_db
 from .analysis import coach
 from .garmin.client import GarminNotLoggedIn
@@ -339,3 +339,8 @@ def plan_generate():
     except coach.CoachUnavailable as exc:
         raise HTTPException(503, str(exc))
     return plan.get_plan() or {"week_key": plan.current_week_key(), "days": None}
+
+
+@app.get("/api/sleep-schedule")
+def sleep_schedule_get(days: int = Query(90, ge=7, le=365)):
+    return sleep_schedule.load(days)

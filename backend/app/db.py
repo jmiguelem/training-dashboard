@@ -147,6 +147,20 @@ CREATE TABLE IF NOT EXISTS plan_check (
     done INTEGER NOT NULL,
     PRIMARY KEY (week_key, item)
 );
+CREATE TABLE IF NOT EXISTS garmin_sleep (
+    date TEXT PRIMARY KEY,
+    start_local TEXT NOT NULL,
+    end_local TEXT NOT NULL,
+    sleep_s INTEGER,
+    deep_s INTEGER,
+    light_s INTEGER,
+    rem_s INTEGER,
+    awake_s INTEGER,
+    avg_hr REAL,
+    avg_hrv REAL,
+    raw TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS garmin_sleep_checked (date TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,

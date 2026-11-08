@@ -31,6 +31,28 @@ def upsert_activity(conn, a: dict) -> None:
     )
 
 
+def upsert_sleep(conn, day: str, d: dict) -> bool:
+    dto = d.get("dailySleepDTO") or {}
+    st, en = dto.get("sleepStartTimestampLocal"), dto.get("sleepEndTimestampLocal")
+    if not st or not en or not dto.get("sleepTimeSeconds"):
+        return False
+    iso = lambda ms: datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")  # noqa: E731
+    conn.execute(
+        """INSERT INTO garmin_sleep (date, start_local, end_local, sleep_s, deep_s, light_s, rem_s,
+             awake_s, avg_hr, avg_hrv, raw)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(date) DO UPDATE SET start_local=excluded.start_local, end_local=excluded.end_local,
+             sleep_s=excluded.sleep_s, deep_s=excluded.deep_s, light_s=excluded.light_s,
+             rem_s=excluded.rem_s, awake_s=excluded.awake_s, avg_hr=excluded.avg_hr,
+             avg_hrv=excluded.avg_hrv, raw=excluded.raw""",
+        (dto.get("calendarDate") or day, iso(st), iso(en), dto.get("sleepTimeSeconds"),
+         dto.get("deepSleepSeconds"), dto.get("lightSleepSeconds"), dto.get("remSleepSeconds"),
+         dto.get("awakeSleepSeconds"), dto.get("avgHeartRate"), d.get("avgOvernightHrv"),
+         json.dumps(dto)),
+    )
+    return True
+
+
 def _vo2max(metrics) -> float | None:
     try:
         item = metrics[0] if isinstance(metrics, list) else metrics
@@ -91,6 +113,29 @@ def sync_laps(api) -> int:
     return done
 
 
+def backfill_sleep(api, days: int = 90) -> int:
+    """Fetch nights we have not seen yet (first run pulls ~3 months). Empty nights are remembered."""
+    today = datetime.now(timezone.utc).date()
+    with get_db() as conn:
+        have = {r[0] for r in conn.execute("SELECT date FROM garmin_sleep")}
+        have |= {r[0] for r in conn.execute("SELECT date FROM garmin_sleep_checked")}
+    n = 0
+    for back in range(2, days + 1):  # skip today and yesterday: still being written
+        iso = (today - timedelta(days=back)).isoformat()
+        if iso in have:
+            continue
+        try:
+            d = api.get_sleep_data(iso)
+        except Exception:
+            continue
+        with get_db() as conn:
+            if d and upsert_sleep(conn, iso, d):
+                n += 1
+            else:
+                conn.execute("INSERT OR IGNORE INTO garmin_sleep_checked (date) VALUES (?)", (iso,))
+    return n
+
+
 def _last_ok() -> datetime | None:
     with get_db() as conn:
         row = conn.execute(
@@ -122,6 +167,7 @@ def sync_garmin() -> dict:
                 upsert_activity(conn, a)
         counts["activities"] = len(activities)
         counts["laps"] = sync_laps(api)
+        counts["sleep_backfill"] = backfill_sleep(api)
         from .. import lifts
 
         counts["sets"] = lifts.sync_lifts(api)
@@ -135,6 +181,13 @@ def sync_garmin() -> dict:
                 metrics = None
             with get_db() as conn:
                 upsert_daily(conn, iso, stats, metrics)
+            try:
+                sleep = api.get_sleep_data(iso)
+            except Exception:
+                sleep = None
+            if sleep:
+                with get_db() as conn:
+                    counts["sleep"] = counts.get("sleep", 0) + int(upsert_sleep(conn, iso, sleep))
             counts["daily"] += 1
             day += timedelta(days=1)
     except Exception as exc:

@@ -6,7 +6,7 @@ import anthropic
 
 from .. import config
 from ..db import get_db
-from .. import lifts, plan
+from .. import lifts, plan, sleep_schedule
 from .. import profile as prof
 from . import sport_metrics
 from .metrics import compute, normalize_sport, parse_ts, sport_group
@@ -126,6 +126,7 @@ def build_context(today: datetime | None = None) -> dict:
         "daily_last_14_days": dict(sorted(daily.items())),
         "sport_metrics": sm_all_summary,
         "all_swims_last_120_days": swims,
+        "sleep_schedule": sleep_schedule.coach_summary(),
         "gym_lifts": lifts.coach_summary(),
         "recent_gym_sessions": lifts.recent_session_summaries(),
         "all_runs_last_6_months": runs,
