@@ -193,3 +193,16 @@ def test_goal_progress_tracks_longest_session_per_sport():
     assert by["Run"]["longest_km"] == 5.13 and by["Run"]["percent"] == 28
     assert by["Swim"]["longest_km"] == 1.0 and by["Bike"]["longest_km"] == 0
     assert g["weeks_to_race"] is not None
+
+
+def test_coach_sees_individual_swims(fake):
+    import json as _json
+
+    raw = _json.dumps({"averageSpeed": 0.9, "movingDuration": 3600.0, "duration": 4000.0, "distance": 3200.0,
+                       "averageHR": 150.0, "averageSwolf": 40.0})
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO garmin_activity (id, sport, start, distance_m, duration_s, raw) "
+            "VALUES (1, 'lap_swimming', datetime('now', '-20 days'), 3200, 4000, ?)", (raw,))
+    ctx = coach.build_context()
+    assert ctx["all_swims_last_120_days"][0]["km"] == 3.2

@@ -107,12 +107,24 @@ def build_context(today: datetime | None = None) -> dict:
     # plus the latest non-run sessions. Runs must not be crowded out by gym sessions.
     runs = [e for g, e in map(entry, runs_6m) if g == "Run"]
     recent = [e for g, e in map(entry, acts) if g != "Run"][-MAX_ACTIVITIES:]
+    sm_all = sport_metrics.load(365)
+    sm_all_summary = sport_metrics.coach_summary(sm_all)
+    cutoff_swim = (today or datetime.now(timezone.utc)).date() - timedelta(days=120)
+    swims = [
+        {
+            "date": a["date"], "km": a["km"], "minutes": a["minutes"], "pace_per_100m_s": a.get("pace_s_per_100m"),
+            "swolf": a.get("swolf"), "avg_hr": a["avg_hr"],
+        }
+        for a in sm_all["Swim"]["activities"]
+        if a["date"] >= cutoff_swim.isoformat()
+    ]
     return {
         "today": (today or datetime.now(timezone.utc)).date().isoformat(),
         "metrics": analysis["metrics"],
         "flags": analysis["flags"],
         "daily_last_14_days": dict(sorted(daily.items())),
-        "sport_metrics": sport_metrics.coach_summary(sport_metrics.load(365)),
+        "sport_metrics": sm_all_summary,
+        "all_swims_last_120_days": swims,
         "all_runs_last_6_months": runs,
         "recent_non_run_activities": recent,
     }
