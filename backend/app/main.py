@@ -152,3 +152,22 @@ def garmin_daily(days: int = Query(90, ge=1, le=730)):
         "FROM garmin_daily WHERE date >= date('now', ?) ORDER BY date",
         (f"-{days} days",),
     )
+
+
+@app.get("/api/insights")
+def insights():
+    from .analysis.metrics import compute
+
+    acts = _rows(
+        "SELECT sport, start, distance_m, duration_s, avg_hr, avg_speed_ms FROM garmin_activity "
+        "WHERE start >= datetime('now', '-90 days')"
+    )
+    rec = _rows(
+        "SELECT created_at, recovery_score, resting_hr, hrv_rmssd_ms FROM whoop_recovery "
+        "WHERE created_at >= datetime('now', '-60 days')"
+    )
+    sl = _rows(
+        "SELECT end, nap, light_ms, sws_ms, rem_ms FROM whoop_sleep "
+        "WHERE end >= datetime('now', '-60 days')"
+    )
+    return compute(acts, rec, sl)
