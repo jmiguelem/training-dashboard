@@ -94,3 +94,22 @@ def test_truncated_reply_is_not_returned(monkeypatch):
         coach.weekly_summary()
     with get_db() as conn:
         assert conn.execute("SELECT COUNT(*) FROM coach_summary").fetchone()[0] == 0
+
+
+def test_old_runs_are_not_crowded_out_by_recent_gym_sessions(fake):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO garmin_activity (id, sport, start, distance_m, duration_s, avg_hr, "
+            "avg_speed_ms, raw) VALUES (1, 'running', datetime('now', '-60 days'), 5000, 2400, "
+            "154, 2.1, '{}')"
+        )
+        for i in range(2, 40):
+            conn.execute(
+                "INSERT INTO garmin_activity (id, sport, start, duration_s, avg_hr, raw) "
+                "VALUES (?, 'strength_training', datetime('now', ?), 3600, 120, '{}')",
+                (i, f"-{i % 20} hours"),
+            )
+    ctx = coach.build_context()
+    assert len(ctx["all_runs_last_6_months"]) == 1
+    assert ctx["all_runs_last_6_months"][0]["avg_hr"] == 154
+    assert all(a["type"] != "Run" for a in ctx["recent_non_run_activities"])

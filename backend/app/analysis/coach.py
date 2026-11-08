@@ -51,6 +51,11 @@ def build_context(today: datetime | None = None) -> dict:
             "training_load FROM garmin_activity WHERE start >= datetime('now', '-90 days') "
             "ORDER BY start",
         )
+        runs_6m = _rows(
+            conn,
+            "SELECT sport, start, distance_m, duration_s, avg_hr, avg_speed_ms FROM garmin_activity "
+            "WHERE start >= datetime('now', '-180 days') AND sport LIKE '%running%' ORDER BY start",
+        )
         rec = _rows(
             conn,
             "SELECT created_at, recovery_score, resting_hr, hrv_rmssd_ms FROM whoop_recovery "
@@ -88,26 +93,30 @@ def build_context(today: datetime | None = None) -> dict:
         if d >= cutoff:
             daily.setdefault(d.isoformat(), {}).update(strain=_r(c["strain"]))
 
-    recent = []
-    for a in acts[-MAX_ACTIVITIES:]:
+    def entry(a):
         a = {**a, "sport": normalize_sport(a["sport"], a["avg_speed_ms"])}
+        g = sport_group(a["sport"])
         km = (a["distance_m"] or 0) / 1000
-        recent.append(
-            {
-                "date": parse_ts(a["start"]).date().isoformat(),
-                "type": sport_group(a["sport"]),
-                "minutes": round((a["duration_s"] or 0) / 60),
-                "km": round(km, 2) if km else None,
-                "avg_hr": _r(a["avg_hr"]),
-                "pace_min_per_km": _pace(a["avg_speed_ms"]) if sport_group(a["sport"]) == "Run" else None,
-            }
-        )
+        return g, {
+            "date": parse_ts(a["start"]).date().isoformat(),
+            "type": g,
+            "minutes": round((a["duration_s"] or 0) / 60),
+            "km": round(km, 2) if km else None,
+            "avg_hr": _r(a["avg_hr"]),
+            "pace_min_per_km": _pace(a["avg_speed_ms"]) if g == "Run" else None,
+        }
+
+    # Every real run (6 months) so the coach sees the whole running history,
+    # plus the latest non-run sessions. Runs must not be crowded out by gym sessions.
+    runs = [e for g, e in map(entry, runs_6m) if g == "Run"]
+    recent = [e for g, e in map(entry, acts) if g != "Run"][-MAX_ACTIVITIES:]
     return {
         "today": (today or datetime.now(timezone.utc)).date().isoformat(),
         "metrics": analysis["metrics"],
         "flags": analysis["flags"],
         "daily_last_14_days": dict(sorted(daily.items())),
-        "recent_activities": recent,
+        "all_runs_last_6_months": runs,
+        "recent_non_run_activities": recent,
     }
 
 
