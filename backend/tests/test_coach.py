@@ -113,3 +113,8 @@ def test_old_runs_are_not_crowded_out_by_recent_gym_sessions(fake):
     assert len(ctx["all_runs_last_6_months"]) == 1
     assert ctx["all_runs_last_6_months"][0]["avg_hr"] == 154
     assert all(a["type"] != "Run" for a in ctx["recent_non_run_activities"])
+
+
+def test_profile_includes_max_hr_and_zones(fake):
+    coach.chat([{"role": "user", "content": "zones?"}])
+    assert "190" in fake.calls[0]["system"] and "Z2 114-132" in fake.calls[0]["system"]

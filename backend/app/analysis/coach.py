@@ -14,6 +14,7 @@ PROFILE = """\
 - Long-term goal: a half Ironman (1.9 km swim, 90 km bike, 21.1 km run) in about 12 months (around Nov 2027).
 - Near-term goal: build a running base while keeping gym training.
 - Lifts weights about 4 times a week.
+- Max heart rate: 190 bpm (as stated by the athlete). Zones as % of max: Z1 95-113, Z2 114-132, Z3 133-151, Z4 152-170, Z5 171-190 bpm. Easy running should sit in Z2, at most the low end of Z3.
 - Devices: Garmin watch (activities), Whoop (recovery, sleep, strain).
 """
 
