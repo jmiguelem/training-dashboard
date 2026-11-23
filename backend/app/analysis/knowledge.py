@@ -4,27 +4,11 @@ Written in our own words from public coaching sources, not copied. Edit freely: 
 coach as background. The athlete's own data, profile and safety always override it.
 """
 
-KNOWLEDGE_VERSION = 1
+KNOWLEDGE_VERSION = 2
 
-TRAINING_KNOWLEDGE = """\
-General principles for building a half-Ironman (70.3) schedule. Use them as a template, then adapt to the \
-athlete's data. If the athlete's data, profile or safety disagrees with anything here, the athlete wins.
-
-Typical structure of beginner 70.3 plans (common to published 12 to 25 week plans from TrainingPeaks coaches, \
-Tri247, Marathon Handbook and others):
-- 2 to 3 sessions per sport per week for swim, bike and run, plus 1 strength session. The bike carries the most hours.
-- One longer session per sport each week, usually on the weekend, with easier sessions in between.
-- Plans start gently (run/walk intervals for new runners) and mostly stay easy (zone 2), layering in tempo or \
-interval work later.
-- Longest sessions peak about 2 to 3 weeks before the race: roughly a 16-20 km run, an 80-100 km easy ride and a swim of \
-about 2 km. Do not repeat the peak distance on race day's eve.
-- Brick sessions (bike then run) start in the build phase, lengthen over time, and a race-simulation brick or two appears \
-mid-to-late plan.
-- Recovery weeks come every 3rd or 4th week with clearly less volume. Taper over the last 1 to 3 weeks: less volume, a \
-little intensity kept.
-- Time and entry level: first-timer plans run 14 to 25 weeks and assume the athlete can already run/walk, swim continuously \
-and ride for an hour or more. If the time to the race is short for the athlete's current base, say so plainly and prioritise \
-the weakest sport; do not compress progress to fit.
+BASE_KNOWLEDGE = """\
+General endurance-training principles. Use them as a template, then adapt to the athlete's data and goal. If the \
+athlete's data, profile or safety disagrees with anything here, the athlete wins.
 
 Periodization (Joe Friel, The Triathlete's Training Bible): Base, then Build, then Peak, then Race. Base builds general aerobic \
 fitness and technique. Build adds race-specific and higher-intensity work. Peak sharpens. Load rises for 2 to 3 weeks then drops \
@@ -51,6 +35,31 @@ from what they have done lately.
 - Suggested phase by weeks to race: more than 16 base, 8 to 16 build, 3 to 8 peak and race-specific, 1 to 2 taper, 0 race week. \
 If the athlete is behind where this implies, say so and plan the next step, not a leap.
 - Keep any week-to-week rise in total training time near 10 percent, and add a recovery week after 3 rising weeks.
-- Keep every sport in the plan over a multi-week view. If a sport was left out this week, it should return soon, in a short easy \
+- Keep every sport the athlete trains in the plan over a multi-week view. If a sport was left out this week, it should return soon, in a short easy \
 session, so the skill and feel are not lost.
 """
+
+# Added on top of BASE_KNOWLEDGE for a given goal type.
+TRIATHLON_KNOWLEDGE = """\
+Typical structure of beginner 70.3 plans (common to published 12 to 25 week plans from TrainingPeaks coaches, \
+Tri247, Marathon Handbook and others):
+- 2 to 3 sessions per sport per week for swim, bike and run, plus 1 strength session. The bike carries the most hours.
+- One longer session per sport each week, usually on the weekend, with easier sessions in between.
+- Plans start gently (run/walk intervals for new runners) and mostly stay easy (zone 2), layering in tempo or \
+interval work later.
+- Longest sessions peak about 2 to 3 weeks before the race: roughly a 16-20 km run, an 80-100 km easy ride and a swim of \
+about 2 km. Do not repeat the peak distance on race day's eve.
+- Brick sessions (bike then run) start in the build phase, lengthen over time, and a race-simulation brick or two appears \
+mid-to-late plan.
+- Recovery weeks come every 3rd or 4th week with clearly less volume. Taper over the last 1 to 3 weeks: less volume, a \
+little intensity kept.
+- Time and entry level: first-timer plans run 14 to 25 weeks and assume the athlete can already run/walk, swim continuously \
+and ride for an hour or more. If the time to the race is short for the athlete's current base, say so plainly and prioritise \
+the weakest sport; do not compress progress to fit.
+"""
+
+EXTRA_BY_GOAL = {"triathlon": TRIATHLON_KNOWLEDGE}
+
+
+def knowledge_for(goal_type: str) -> str:
+    return BASE_KNOWLEDGE + EXTRA_BY_GOAL.get(goal_type, "")

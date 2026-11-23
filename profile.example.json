@@ -1,0 +1,13 @@
+{
+  "goal_type": "running",
+  "goal": "Run a sub-2h half marathon.",
+  "race_name": "City Half Marathon",
+  "race_date": "2027-04-18",
+  "max_hr": 188,
+  "gym_days_per_week": 2,
+  "gym_split": "Full body",
+  "background": "Running 3x a week for two years, comfortable at 10 km.",
+  "injuries": "",
+  "notes": "Prefer morning sessions.",
+  "target_run_km": 18
+}

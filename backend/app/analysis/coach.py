@@ -9,7 +9,7 @@ from ..db import get_db
 from .. import lifts, plan, sleep_schedule
 from .. import profile as prof
 from . import sport_metrics
-from .knowledge import TRAINING_KNOWLEDGE
+from .knowledge import knowledge_for
 from .metrics import compute, normalize_sport, parse_ts, sport_group
 
 SYSTEM_TEMPLATE = """\
@@ -22,14 +22,11 @@ Rules:
 - Ground every claim in the numbers provided. Quote the actual values. If data is missing or too thin to conclude, say so.
 - Tie advice to the athlete's goal and race date. Say how today's advice moves them toward it.
 - Be concise and direct. Plain text only: short paragraphs and simple "-" lists, no markdown headings, no bold, no tables.
-- Prioritise injury prevention and gradual progression for a beginner runner (about +10% weekly volume, easy aerobic running, enough rest).
+- Prioritise injury prevention and gradual progression suited to the athlete's stated background (about +10% weekly volume, easy aerobic work, enough rest).
 - Whoop recovery under 34 percent is low, 34-66 moderate, 67+ high. Treat HRV and resting HR as trends against the athlete's own baseline, not absolute targets.
 - You are not a doctor. For pain, dizziness, chest symptoms or anything that sounds medical, tell them to stop and see a professional.
 - Do not invent workouts the data does not support. Suggestions should be concrete (what, how long, how hard) and fit the stated goals.
 """
-
-# Rule-of-thumb readiness targets for a half Ironman (longest single session before race day).
-TARGETS = {"Run": 18.0, "Swim": 1.9, "Bike": 80.0}  # km
 
 MAX_ACTIVITIES = 25
 DAILY_DAYS = 14
@@ -198,7 +195,7 @@ def _system_with_data(ctx: dict) -> str:
             f"- {n['week_key']}: {n['text']}" for n in notes
         )
     return (
-        SYSTEM_TEMPLATE.format(profile=prof.profile_text(), knowledge=TRAINING_KNOWLEDGE)
+        SYSTEM_TEMPLATE.format(profile=prof.profile_text(), knowledge=knowledge_for(prof.get_profile()['goal_type']))
         + notes_txt
         + "\n\nAthlete data (JSON):\n"
         + json.dumps(ctx, indent=1)
@@ -334,15 +331,16 @@ def goal_progress(today: date | None = None) -> dict:
             "WHERE start >= datetime('now', '-365 days')",
         )
     cut = today - timedelta(days=RECENT_WEEKS * 7)
-    best = {g: {"km": 0.0, "date": None} for g in TARGETS}
-    recent = {g: {"km": 0.0, "date": None} for g in TARGETS}
+    targets = prof.targets_km(p)
+    best = {g: {"km": 0.0, "date": None} for g in targets}
+    recent = {g: {"km": 0.0, "date": None} for g in targets}
     weekly_min: dict[date, float] = {}
     for r in rows:
         day = parse_ts(r["start"]).astimezone().date()
         monday = day - timedelta(days=day.weekday())
         weekly_min[monday] = weekly_min.get(monday, 0) + (r["duration_s"] or 0) / 60
         g = sport_group(normalize_sport(r["sport"], r["avg_speed_ms"]))
-        if g not in TARGETS:
+        if g not in targets:
             continue
         km = (r["distance_m"] or 0) / 1000
         if km > best[g]["km"]:
@@ -355,21 +353,22 @@ def goal_progress(today: date | None = None) -> dict:
     run4 = compute(run_rows, [], [], today=today)["metrics"]["run_km_4w"]
     wk = prof.weeks_to_race(p, today)
     items = []
-    for g in ("Run", "Swim", "Bike"):
+    for g in (g for g in ("Run", "Swim", "Bike") if g in targets):
         b, rc = best[g], recent[g]
         items.append(
             {
                 "sport": g,
-                "target_km": TARGETS[g],
+                "target_km": targets[g],
                 "longest_recent_km": round(rc["km"], 2),
                 "longest_recent_date": rc["date"].isoformat() if rc["date"] else None,
                 "best_12m_km": round(b["km"], 2),
                 "best_12m_date": b["date"].isoformat() if b["date"] else None,
                 "weeks_since_best": (today - b["date"]).days // 7 if b["date"] else None,
-                "percent": min(100, round(rc["km"] / TARGETS[g] * 100)),
+                "percent": min(100, round(rc["km"] / targets[g] * 100)),
             }
         )
     return {
+        "goal_type": p["goal_type"],
         "goal": p["goal"],
         "race_name": p["race_name"],
         "race_date": p["race_date"],
@@ -381,7 +380,7 @@ def goal_progress(today: date | None = None) -> dict:
         "recovery_week_suggested": len(last4) == 4 and last4[1] < last4[2] < last4[3],
         "note": (
             f"Readiness counts only the last {RECENT_WEEKS} weeks; older bests show past capacity. "
-            "Targets are rule-of-thumb longest-session benchmarks for a half Ironman, not a plan."
+            "Targets are longest-session benchmarks (defaults for the goal type, or your own), not a plan."
         ),
     }
 

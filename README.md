@@ -13,6 +13,11 @@ Personal dashboard for Garmin and Whoop data, with progress analysis.
 ## Setup
 Copy `.env.example` to `.env` and fill in values. Never commit `.env`.
 
+## Your goal and profile
+Nothing personal is hardcoded. A fresh clone starts with a blank profile (general fitness, no race). Open the Coach page, "Profile and goals", and set your goal type (general, triathlon, running, cycling, strength), goal, event name and date, max HR, gym days and split, background, injuries, and optional longest-session targets for run, swim and ride. The coach and the readiness card follow those.
+
+To pre-fill a new database instead, copy `profile.example.json` to `data/profile.json` (gitignored) and edit it. It only supplies values you have not saved in the app. Triathlon is the only goal type with built-in readiness targets and plan knowledge (70.3); for other goals set your own targets.
+
 ## Login
 The dashboard is password protected. Set `DASHBOARD_PASSWORD` in `.env` (use a long random one). Without it the API refuses every request. Sessions are a signed HttpOnly cookie that lasts `SESSION_DAYS` (default 30); changing the password signs everyone out. After 5 wrong attempts an IP is locked out for 5 minutes. If you expose this beyond localhost, put it behind HTTPS so the cookie is marked `Secure`.
 

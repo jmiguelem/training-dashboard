@@ -4,6 +4,7 @@ type Summary = { text: string | null; created_at?: string }
 type Msg = { role: 'user' | 'assistant'; content: string }
 type Note = { week_key: string; text: string }
 type Goal = {
+  goal_type: string
   goal: string
   race_name: string
   race_date: string
@@ -25,6 +26,10 @@ type Goal = {
   note: string
 }
 type Profile = {
+  goal_type: string
+  target_run_km: number | null
+  target_swim_km: number | null
+  target_bike_km: number | null
   goal: string
   race_name: string
   race_date: string
@@ -48,6 +53,19 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 const getJson = <T,>(path: string) => send<T>('GET', path)
 
+const GOAL_TYPES: [string, string][] = [
+  ['general', 'General fitness'],
+  ['triathlon', 'Triathlon (swim, bike, run)'],
+  ['running', 'Running'],
+  ['cycling', 'Cycling'],
+  ['strength', 'Strength'],
+]
+const TARGETS = [
+  ['target_run_km', 'Longest run target'],
+  ['target_swim_km', 'Longest swim target'],
+  ['target_bike_km', 'Longest ride target'],
+] as const
+
 const SPLIT_PRESETS = ['Upper/Lower', 'Push/Pull/Legs', 'Full body', 'Bro split']
 const SUGGESTIONS = [
   'Should I run today?',
@@ -65,13 +83,17 @@ function GoalCard({ goal }: { goal: Goal }) {
   return (
     <section className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold">Goal: {goal.race_name}</h2>
+        <h2 className="text-base font-semibold">
+          {goal.race_name || goal.goal ? `Goal${goal.race_name ? ': ' + goal.race_name : ''}` : 'No goal set yet'}
+        </h2>
         <span className="secondary text-sm tabular-nums">
-          {goal.weeks_to_race != null ? `${goal.weeks_to_race} weeks to go` : 'No race date set'}
+          {goal.weeks_to_race != null ? `${goal.weeks_to_race} weeks to go` : 'No event date set'}
           {goal.race_date ? ` · ${goal.race_date}` : ''}
         </span>
       </div>
-      <p className="secondary mt-1 text-sm">{goal.goal}</p>
+      <p className="secondary mt-1 text-sm">
+        {goal.goal || 'Open "Profile and goals" below to set your goal, event date and targets.'}
+      </p>
       {goal.suggested_phase && (
         <p className="mt-2 text-sm">
           <span className="muted">Phase by calendar: </span>
@@ -163,6 +185,21 @@ function ProfileForm({ onSaved }: { onSaved: () => void }) {
     <details className="card">
       <summary className="cursor-pointer text-base font-semibold">Profile and goals</summary>
       <div className="mt-3 space-y-3">
+        <label className="block text-sm">
+          <span className="secondary">Goal type</span>
+          <select
+            value={p.goal_type}
+            onChange={(e) => set('goal_type', e.target.value)}
+            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+            style={field}
+          >
+            {GOAL_TYPES.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         {text('goal', 'Goal')}
         <div className="grid gap-3 sm:grid-cols-4">
           <label className="block text-sm sm:col-span-2">
@@ -239,6 +276,23 @@ function ProfileForm({ onSaved }: { onSaved: () => void }) {
               />
             </label>
           )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {TARGETS.map(([k, label]) => (
+            <label key={k} className="block text-sm">
+              <span className="secondary">{label} (km, optional)</span>
+              <input
+                type="number"
+                min={0}
+                step="any"
+                value={p[k] ?? ''}
+                placeholder={p.goal_type === 'triathlon' ? 'default' : 'none'}
+                onChange={(e) => set(k, e.target.value === '' ? null : Number(e.target.value))}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                style={field}
+              />
+            </label>
+          ))}
         </div>
         {text('background', 'Background')}
         {text('injuries', 'Injuries or limits')}

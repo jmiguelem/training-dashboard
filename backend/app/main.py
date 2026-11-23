@@ -193,6 +193,10 @@ class ChatRequest(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
+    goal_type: str | None = None
+    target_run_km: float | None = None
+    target_swim_km: float | None = None
+    target_bike_km: float | None = None
     goal: str | None = None
     race_name: str | None = None
     race_date: str | None = None
@@ -212,7 +216,11 @@ def profile_get():
 @app.put("/api/profile")
 def profile_put(update: ProfileUpdate):
     try:
-        return profile.save_profile(update.model_dump(exclude_none=True))
+        # A target sent as null clears it; for every other field null means "leave unchanged".
+        data = update.model_dump(exclude_unset=True)
+        return profile.save_profile(
+            {k: v for k, v in data.items() if v is not None or k in profile.TARGET_FIELDS.values()}
+        )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 

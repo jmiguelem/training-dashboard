@@ -2,18 +2,38 @@
 import json
 from datetime import date
 
+from . import config
 from .db import get_db
 
+# Neutral defaults so a fresh clone carries no one's personal data. Fill these in on the Coach page, or
+# pre-seed them with a gitignored data/profile.json (see profile.example.json).
+GOAL_TYPES = {
+    "general": "General fitness",
+    "triathlon": "Triathlon (swim, bike, run)",
+    "running": "Running",
+    "cycling": "Cycling",
+    "strength": "Strength",
+}
+
+# Longest-session readiness benchmarks (km). Only triathlon ships with rule-of-thumb numbers; for other goals
+# set your own targets on the Coach page.
+DEFAULT_TARGETS_KM = {"triathlon": {"Run": 18.0, "Swim": 1.9, "Bike": 80.0}}
+TARGET_FIELDS = {"Run": "target_run_km", "Swim": "target_swim_km", "Bike": "target_bike_km"}
+
 DEFAULTS: dict = {
-    "goal": "Complete a half Ironman (1.9 km swim, 90 km bike, 21.1 km run).",
-    "race_name": "Half Ironman",
-    "race_date": "2027-11-07",  # approximate: 'in about a year'; edit in the app
-    "max_hr": 190,
-    "gym_days_per_week": 4,
+    "goal_type": "general",
+    "goal": "",
+    "race_name": "",
+    "race_date": "",
+    "max_hr": 185,
+    "gym_days_per_week": 0,
     "gym_split": "",
-    "background": "Zero running experience before this. Building a running base first while keeping gym training.",
+    "background": "",
     "injuries": "",
     "notes": "",
+    "target_run_km": None,
+    "target_swim_km": None,
+    "target_bike_km": None,
 }
 
 FIELDS = tuple(DEFAULTS)
@@ -31,11 +51,29 @@ SPLITS = {
 }
 
 
+def _seed() -> dict:
+    """Optional gitignored data/profile.json that pre-fills the profile for a fresh database."""
+    try:
+        data = json.loads(config.PROFILE_SEED.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if k in FIELDS} if isinstance(data, dict) else {}
+
+
 def get_profile() -> dict:
     with get_db() as conn:
         row = conn.execute("SELECT data FROM athlete_profile WHERE id = 1").fetchone()
     stored = json.loads(row["data"]) if row else {}
-    return {**DEFAULTS, **{k: v for k, v in stored.items() if k in FIELDS}}
+    return {**DEFAULTS, **_seed(), **{k: v for k, v in stored.items() if k in FIELDS}}
+
+
+def targets_km(p: dict) -> dict[str, float]:
+    """Readiness targets: the athlete's own numbers, else the goal type's defaults (triathlon only)."""
+    out = dict(DEFAULT_TARGETS_KM.get(p.get("goal_type"), {}))
+    for sport, field in TARGET_FIELDS.items():
+        if p.get(field):
+            out[sport] = float(p[field])
+    return out
 
 
 def save_profile(update: dict) -> dict:
@@ -44,6 +82,14 @@ def save_profile(update: dict) -> dict:
         clean["max_hr"] = int(clean["max_hr"])
         if not 120 <= clean["max_hr"] <= 230:
             raise ValueError("max_hr must be between 120 and 230")
+    if "goal_type" in clean and clean["goal_type"] not in GOAL_TYPES:
+        raise ValueError(f"goal_type must be one of {', '.join(GOAL_TYPES)}")
+    for f in TARGET_FIELDS.values():
+        if f in clean:
+            v = clean[f]
+            clean[f] = None if v in (None, "", 0) else float(v)
+            if clean[f] is not None and not 0 < clean[f] <= 1000:
+                raise ValueError(f"{f} must be between 0 and 1000 km")
     if "gym_days_per_week" in clean:
         clean["gym_days_per_week"] = int(clean["gym_days_per_week"])
         if not 0 <= clean["gym_days_per_week"] <= 7:
@@ -99,12 +145,24 @@ def profile_text(p: dict | None = None, today: date | None = None) -> str:
     z = ", ".join(f"{n} {lo}-{hi}" for n, lo, hi in zones(p["max_hr"]))
     wk = weeks_to_race(p, today)
     lines = [
-        f"- Goal: {p['goal']}",
-        f"- Race: {p['race_name']} on {p['race_date']}"
-        + (f" ({wk} weeks away)" if wk is not None else "")
-        + ". The date is the athlete's estimate.",
-        f"- Background: {p['background']}",
-        f"- Gym: about {p['gym_days_per_week']} sessions a week. " + split_text(p["gym_split"]),
+        f"- Goal type: {GOAL_TYPES.get(p['goal_type'], p['goal_type'])}",
+        f"- Goal: {p['goal'] or 'not stated; ask the athlete or keep advice general'}",
+    ]
+    if p["race_date"]:
+        lines.append(
+            f"- Event: {p['race_name'] or 'target event'} on {p['race_date']}"
+            + (f" ({wk} weeks away)" if wk is not None else "")
+            + ". The date is the athlete's estimate."
+        )
+    else:
+        lines.append("- No event date set; plan for steady general progress, not a taper or peak.")
+    lines += [
+        f"- Background: {p['background'] or 'not stated'}",
+        (
+            f"- Gym: about {p['gym_days_per_week']} sessions a week. " + split_text(p["gym_split"])
+            if p["gym_days_per_week"]
+            else "- Gym: no gym sessions planned unless the athlete asks."
+        ),
         f"- Max heart rate: {p['max_hr']} bpm (stated by the athlete). Zones in bpm: {z}. "
         "Easy running should sit in Z2, at most the low end of Z3.",
         f"- Injuries or limits: {p['injuries'] or 'none reported'}",
