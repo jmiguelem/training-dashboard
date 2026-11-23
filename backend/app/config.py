@@ -12,6 +12,10 @@ WHOOP_CLIENT_SECRET = os.getenv("WHOOP_CLIENT_SECRET", "")
 WHOOP_REDIRECT_URI = os.getenv(
     "WHOOP_REDIRECT_URI", "http://localhost:8000/auth/whoop/callback"
 )
+# Login. No password set means the API refuses everything (fail closed).
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "")
+SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"

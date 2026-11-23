@@ -13,6 +13,9 @@ Personal dashboard for Garmin and Whoop data, with progress analysis.
 ## Setup
 Copy `.env.example` to `.env` and fill in values. Never commit `.env`.
 
+## Login
+The dashboard is password protected. Set `DASHBOARD_PASSWORD` in `.env` (use a long random one). Without it the API refuses every request. Sessions are a signed HttpOnly cookie that lasts `SESSION_DAYS` (default 30); changing the password signs everyone out. After 5 wrong attempts an IP is locked out for 5 minutes. If you expose this beyond localhost, put it behind HTTPS so the cookie is marked `Secure`.
+
 ## Run
 ```bash
 # backend (http://localhost:8000)

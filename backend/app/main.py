@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from . import config, lifts, plan, profile, scheduler, sleep_schedule
+from . import auth, config, lifts, plan, profile, scheduler, sleep_schedule
 from .db import get_db, init_db
 from .analysis import coach
 from .garmin.client import GarminNotLoggedIn
@@ -25,9 +25,12 @@ async def lifespan(app_: FastAPI):
 
 
 app = FastAPI(title="Training Dashboard", lifespan=lifespan)
+app.include_router(auth.router)
+app.middleware("http")(auth.require_login)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[config.FRONTEND_URL],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
