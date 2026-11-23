@@ -32,3 +32,5 @@ AUTO_SYNC = os.getenv("AUTO_SYNC", "1") != "0"
 AUTO_SYNC_DAY = os.getenv("AUTO_SYNC_DAY", "sun")
 AUTO_SYNC_HOUR = int(os.getenv("AUTO_SYNC_HOUR", "23"))
 AUTO_SYNC_MINUTE = int(os.getenv("AUTO_SYNC_MINUTE", "0"))
+
+FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", ROOT / "frontend" / "dist"))

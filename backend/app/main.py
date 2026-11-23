@@ -4,7 +4,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import auth, config, lifts, plan, profile, scheduler, sleep_schedule
 from .db import get_db, init_db
@@ -355,3 +356,19 @@ def plan_generate():
 @app.get("/api/sleep-schedule")
 def sleep_schedule_get(days: int = Query(90, ge=7, le=365)):
     return sleep_schedule.load(days)
+
+
+# --- Serve the built web app from this same server (one process, phone-friendly). Must stay last. ---
+_dist = config.FRONTEND_DIST
+if (_dist / "index.html").exists():
+    if (_dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str):
+        if path.startswith(("api/", "auth/")) or path == "health":
+            raise HTTPException(404)
+        file = (_dist / path).resolve()
+        if path and file.is_file() and _dist.resolve() in file.parents:
+            return FileResponse(file)
+        return FileResponse(_dist / "index.html")

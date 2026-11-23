@@ -59,15 +59,15 @@ export default function App() {
     .pop()
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-12">
+    <div className="mx-auto max-w-6xl px-4 pb-12" style={{ paddingBottom: 'max(3rem, env(safe-area-inset-bottom))' }}>
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
-        <nav className="flex gap-1" aria-label="Main">
+        <nav className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 pb-1 sm:w-auto" aria-label="Main">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
               end={n.to === '/'}
-              className="rounded-md px-3 py-1.5 text-sm"
+              className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm"
               style={({ isActive }) => ({
                 background: isActive ? 'var(--text-primary)' : 'transparent',
                 color: isActive ? 'var(--surface-1)' : 'var(--text-secondary)',
@@ -77,7 +77,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
           {status && !status.whoop_connected && (
             <a className="underline" href="/auth/whoop/login">
               Connect Whoop
