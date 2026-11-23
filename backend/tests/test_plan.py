@@ -151,15 +151,31 @@ def test_weekly_job_is_not_reentrant():
         scheduler._lock.release()
 
 
-def test_catch_up_only_when_last_success_is_old():
-    assert scheduler._missed_last_run() is False  # never synced: nothing to catch up
+def test_last_fire_time_is_most_recent_sunday_23():
+    from datetime import datetime
+
+    tz = datetime.now().astimezone().tzinfo
+    mon = datetime(2026, 11, 23, 9, 0, tzinfo=tz)       # Monday morning
+    assert scheduler.last_fire_time(mon) == datetime(2026, 11, 22, 23, 0, tzinfo=tz)
+    sun_early = datetime(2026, 11, 22, 12, 0, tzinfo=tz)  # Sunday before 23:00 -> previous Sunday
+    assert scheduler.last_fire_time(sun_early) == datetime(2026, 11, 15, 23, 0, tzinfo=tz)
+    sun_late = datetime(2026, 11, 22, 23, 30, tzinfo=tz)
+    assert scheduler.last_fire_time(sun_late) == datetime(2026, 11, 22, 23, 0, tzinfo=tz)
+
+
+def test_catch_up_when_the_weekly_run_was_missed():
+    from datetime import datetime
+
+    tz = datetime.now().astimezone().tzinfo
+    mon = datetime(2026, 11, 23, 9, 0, tzinfo=tz)
+    assert scheduler._missed_last_run(mon) is False  # never used: nothing to catch up
     with get_db() as conn:
-        conn.execute("INSERT INTO sync_log (source, started_at, status) VALUES ('whoop', '2020-01-01T00:00:00+00:00', 'ok')")
-    assert scheduler._missed_last_run() is True
+        conn.execute("INSERT INTO sync_log (source, started_at, status) VALUES ('whoop', '2026-11-17T20:00:00+00:00', 'ok')")
+    assert scheduler._missed_last_run(mon) is True  # manual sync does not replace the Sunday run
     with get_db() as conn:
-        conn.execute("INSERT INTO sync_log (source, started_at, status) "
-                     "VALUES ('garmin', datetime('now'), 'ok')")
-    assert scheduler._missed_last_run() is False
+        conn.execute("INSERT INTO sync_log (source, started_at, status) VALUES ('scheduled', '2026-11-23T14:00:00+00:00', 'ok')")
+    assert scheduler._missed_last_run(mon) is False  # caught up
+    assert scheduler._missed_last_run(datetime(2026, 11, 30, 9, 0, tzinfo=tz)) is True  # next Sunday missed again
 
 
 def test_cron_trigger_is_sunday_night():

@@ -54,18 +54,35 @@ def run_weekly_job() -> dict:
     return result
 
 
-def _missed_last_run() -> bool:
-    """True if we have synced before but nothing succeeded in the last 8 days (Mac was off on Sunday)."""
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def last_fire_time(now: datetime | None = None) -> datetime:
+    """The most recent moment the weekly job was due (local time)."""
+    now = now or datetime.now().astimezone()
+    idx = DAYS.index(config.AUTO_SYNC_DAY[:3].lower())
+    due = now.replace(hour=config.AUTO_SYNC_HOUR, minute=config.AUTO_SYNC_MINUTE, second=0, microsecond=0)
+    due -= timedelta(days=(now.weekday() - idx) % 7)
+    return due - timedelta(days=7) if due > now else due
+
+
+def _missed_last_run(now: datetime | None = None) -> bool:
+    """True if the app has been used before but the last scheduled run never happened (Mac was off or asleep)."""
+    due = last_fire_time(now)
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT MAX(started_at) AS t FROM sync_log WHERE status IN ('ok', 'partial')"
-        ).fetchone()
-    if not row or not row["t"]:
+        used = conn.execute("SELECT 1 FROM sync_log WHERE status IN ('ok', 'partial') LIMIT 1").fetchone()
+        rows = conn.execute(
+            "SELECT started_at FROM sync_log WHERE source = 'scheduled' AND status IN ('ok', 'partial')"
+        ).fetchall()
+    if not used:
         return False
-    last = datetime.fromisoformat(row["t"])
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - last > timedelta(days=8)
+    for r in rows:
+        t = datetime.fromisoformat(r["started_at"])
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        if t >= due:
+            return False
+    return True
 
 
 def start() -> BackgroundScheduler | None:
@@ -84,7 +101,7 @@ def start() -> BackgroundScheduler | None:
     )
     sched.start()
     if _missed_last_run():
-        log.info("last successful sync is over 8 days old, catching up now")
+        log.info("the last scheduled weekly run did not happen, catching up now")
         threading.Thread(target=run_weekly_job, daemon=True).start()
     return sched
 
