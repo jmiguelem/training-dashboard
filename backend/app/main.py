@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
@@ -19,6 +20,8 @@ from .whoop.sync import NotConnected, sync_whoop
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     init_db()
+    if warning := auth.weak_password_warning():
+        logging.getLogger("uvicorn.error").warning(warning)
     app_.state.scheduler = scheduler.start()
     yield
     if app_.state.scheduler:

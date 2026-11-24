@@ -25,6 +25,14 @@ MAX_FAILURES = 5
 WINDOW_S = 300
 
 
+def weak_password_warning() -> str | None:
+    if not config.DASHBOARD_PASSWORD:
+        return "DASHBOARD_PASSWORD is not set: every API request is refused until it is."
+    if len(config.DASHBOARD_PASSWORD) < 12:
+        return "DASHBOARD_PASSWORD is shorter than 12 characters. Use a long random one if this is reachable online."
+    return None
+
+
 def _key() -> bytes:
     # Derived from the password (or an explicit secret), so changing it logs everyone out.
     seed = config.SESSION_SECRET or config.DASHBOARD_PASSWORD

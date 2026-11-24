@@ -1,0 +1,30 @@
+# Runs on the VM from /opt/app/src. Secrets come from /opt/app/.env (written by deploy.sh).
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    env_file: /opt/app/.env
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - /mnt/data/app:/app/data # database and Garmin tokens live on the persistent disk
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # keeps the HTTPS certificate across restarts
+
+volumes:
+  caddy_data:

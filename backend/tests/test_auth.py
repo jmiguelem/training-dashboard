@@ -56,3 +56,13 @@ def test_brute_force_lockout():
     for _ in range(auth.MAX_FAILURES):
         assert c.post("/api/auth/login", json={"password": "bad"}).status_code == 401
     assert c.post("/api/auth/login", json={"password": "correct horse"}).status_code == 429
+
+
+def test_weak_password_warning(monkeypatch):
+    assert auth.weak_password_warning() is None  # "correct horse" is 13 characters
+    monkeypatch.setattr(config, "DASHBOARD_PASSWORD", "short")
+    assert "shorter than 12" in auth.weak_password_warning()
+    monkeypatch.setattr(config, "DASHBOARD_PASSWORD", "")
+    assert "not set" in auth.weak_password_warning()
+    monkeypatch.setattr(config, "DASHBOARD_PASSWORD", "a-long-enough-password")
+    assert auth.weak_password_warning() is None

@@ -27,3 +27,10 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+crash.log

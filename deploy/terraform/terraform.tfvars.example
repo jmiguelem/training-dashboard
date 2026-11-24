@@ -1,0 +1,3 @@
+project_id = "your-gcp-project-id"
+# domain   = "training.example.com"   # optional; otherwise <ip>.sslip.io is used
+# name     = "training"               # change for each extra app in the same project

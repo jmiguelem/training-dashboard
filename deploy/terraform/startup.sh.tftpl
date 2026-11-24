@@ -1,0 +1,49 @@
+#!/bin/bash
+# Runs on every boot; safe to repeat. Installs Docker, mounts the data disk, adds swap, schedules backups.
+set -euo pipefail
+
+# Swap: the e2-micro has 1 GB of memory and building the website needs more.
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+swapon -a || true
+
+if ! command -v docker >/dev/null; then
+  apt-get update
+  apt-get install -y ca-certificates curl gnupg sqlite3
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  apt-get update
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+fi
+
+# Persistent data disk: format only if it has no filesystem yet.
+DISK=/dev/disk/by-id/google-data
+if ! blkid "$DISK" >/dev/null 2>&1; then
+  mkfs.ext4 -m 0 -F "$DISK"
+fi
+mkdir -p /mnt/data
+if ! grep -q ' /mnt/data ' /etc/fstab; then
+  echo "UUID=$(blkid -s UUID -o value "$DISK") /mnt/data ext4 discard,defaults,nofail 0 2" >> /etc/fstab
+fi
+mountpoint -q /mnt/data || mount /mnt/data
+mkdir -p /mnt/data/app /opt/app
+
+# Nightly backup: consistent copy of the database plus the Garmin tokens, to the private bucket.
+cat > /usr/local/bin/backup-app.sh <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+if [ -f /mnt/data/app/training.db ]; then
+  sqlite3 /mnt/data/app/training.db ".backup '$tmp/training.db'"
+fi
+[ -d /mnt/data/app/garmin_tokens ] && cp -r /mnt/data/app/garmin_tokens "$tmp/"
+[ -f /mnt/data/app/profile.json ] && cp /mnt/data/app/profile.json "$tmp/"
+tar -czf "$tmp/backup.tgz" -C "$tmp" .
+gcloud storage cp "$tmp/backup.tgz" "gs://${bucket}/$(date +%F).tgz"
+SCRIPT
+chmod +x /usr/local/bin/backup-app.sh
+echo '17 3 * * * root /usr/local/bin/backup-app.sh >> /var/log/backup-app.log 2>&1' > /etc/cron.d/backup-app
